@@ -1,7 +1,8 @@
 import streamlit as st
 from database import create_user, authenticate
 if "page_configured" not in st.session_state:
-        st.set_page_config(page_title="AI Learning Assistant | Login", layout="centered")
+        
+        st.set_page_config(page_title="AI Learning Assistant | Login", page_icon="🎓", layout="centered")
         st.session_state["page_configured"] = True
 
 def main():
