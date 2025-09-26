@@ -21,14 +21,14 @@ else:
     print("Error:", response.status_code, response.text)
 def generate_ai_response(prompt):
     headers = {"Content-Type": "application/json"}
-    params = {"key": API_KEY}
+    
     data = {"contents": [{"parts": [{"text": prompt}]}]}
 
     try:
         response = requests.post(URL, headers=headers, params=params, json=data)
         response.raise_for_status()
         result = response.json()
-        return result["candidates"][0]["content"]["parts"][0]["text"]
+        return result["candidates"][0]["content"][0]["text"]
     except Exception as e:
         return f"⚠️ Error: {e}"
 
