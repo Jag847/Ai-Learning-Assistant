@@ -3,7 +3,7 @@ from database import create_user, authenticate
 
 def main():
     # -------------------- PAGE CONFIG --------------------
-    st.set_page_config(page_title="AI Learning Assistant | Login", layout="centered")
+    #st.set_page_config(page_title="AI Learning Assistant | Login", layout="centered")
 
     # -------------------- PAGE STYLING --------------------
     page_bg_img = '''
