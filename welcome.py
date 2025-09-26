@@ -1,7 +1,7 @@
 import streamlit as st
 
 def show_welcome_page(username: str):
-    st.set_page_config(page_title="Welcome | AI Learning Assistant", layout="centered")
+    #st.set_page_config(page_title="Welcome | AI Learning Assistant", layout="centered")
 
     # -------------------- PAGE STYLE --------------------
     page_bg = """
