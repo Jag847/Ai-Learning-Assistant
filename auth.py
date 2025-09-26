@@ -4,6 +4,9 @@ from database import create_user, authenticate
 def main():
     # -------------------- PAGE CONFIG --------------------
     #st.set_page_config(page_title="AI Learning Assistant | Login", layout="centered")
+    if "page_configured" not in st.session_state:
+        st.set_page_config(page_title="AI Learning Assistant | Login", layout="centered")
+        st.session_state["page_configured"] = True
 
     # -------------------- PAGE STYLING --------------------
     page_bg_img = '''
@@ -60,10 +63,10 @@ def main():
             if name and password:
                 user = authenticate(name, password)
                 if user:
-                    st.session_state["user_id"] = user.id
-                    st.session_state["username"] = user.name
+                    st.session_state["user_id"] = user[id]
+                    st.session_state["username"] = user[name]
                     st.session_state["logged_in"] = True
-                    st.success(f"✅ Welcome back, {user.name}!")
+                    st.success(f"✅ Welcome back, {user['name']}!")
                     st.rerun()
                 else:
                     st.error("❌ Invalid username or password.")
