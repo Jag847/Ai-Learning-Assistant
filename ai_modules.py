@@ -1,9 +1,24 @@
 import streamlit as st
 import requests
 
-API_KEY = "AIzaSyAjwX-7ymrT5RBObzDkd2nhCFflfXEA2ts"
-API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+API_KEY = "AIzaSyAjwX-7ymrT5RBObzDkd2nhCFflfXEA2ts"  # your raw key
+MODEL = "gemini-1.5-flash"
+URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={API_KEY}"
 
+headers = {"Content-Type": "application/json"}
+
+payload = {
+    "prompt": {"text": "Explain Newton's Laws in simple terms."},
+    "temperature": 0.7,
+    "maxOutputTokens": 300
+}
+
+response = requests.post(URL, headers=headers, json=payload)
+
+if response.status_code == 200:
+    print(response.json())
+else:
+    print("Error:", response.status_code, response.text)
 def generate_ai_response(prompt):
     headers = {"Content-Type": "application/json"}
     params = {"key": API_KEY}
