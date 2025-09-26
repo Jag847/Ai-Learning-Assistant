@@ -4,7 +4,6 @@ from welcome import show_welcome_page
 from ai_modules import run_ai_learning_assistant 
 
 # ----------------------------- CONFIGURATION -----------------------------
-st.set_page_config(page_title="AI Learning Assistant", page_icon="🎓", layout="wide")
 def main():
     authenticator = load_auth()
     user, logged_in, username = authenticator.login()
