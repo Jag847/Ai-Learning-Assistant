@@ -63,8 +63,8 @@ def main():
             if name and password:
                 user = authenticate(name, password)
                 if user:
-                    st.session_state["user_id"] = user[id]
-                    st.session_state["username"] = user[name]
+                    st.session_state["user_id"] = user["id"]
+                    st.session_state["username"] = user["name"]
                     st.session_state["logged_in"] = True
                     st.success(f"✅ Welcome back, {user['name']}!")
                     st.rerun()
