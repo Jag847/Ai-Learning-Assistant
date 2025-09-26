@@ -3,7 +3,7 @@ import requests
 
 API_KEY = "AIzaSyAjwX-7ymrT5RBObzDkd2nhCFflfXEA2ts"  # your raw key
 MODEL = "gemini-1.5-flash"
-URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={API_KEY}"
+URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateMessage?key={API_KEY}"
 
 headers = {"Content-Type": "application/json"}
 
