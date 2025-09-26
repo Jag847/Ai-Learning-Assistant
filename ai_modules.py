@@ -25,7 +25,7 @@ def generate_ai_response(prompt):
     data = {"contents": [{"parts": [{"text": prompt}]}]}
 
     try:
-        response = requests.post(API_URL, headers=headers, params=params, json=data)
+        response = requests.post(URL, headers=headers, params=params, json=data)
         response.raise_for_status()
         result = response.json()
         return result["candidates"][0]["content"]["parts"][0]["text"]
