@@ -1,0 +1,93 @@
+import streamlit as st
+import requests
+
+# ----------------------------- CONFIGURATION -----------------------------
+st.set_page_config(page_title="AI Learning Assistant", page_icon="🎓", layout="wide")
+
+# Add your Google AI API key here
+API_KEY = "https://aistudio.google.com.apikey"
+API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+
+# ----------------------------- HELPER FUNCTION -----------------------------
+def generate_ai_response(prompt):
+    """Send a prompt to the Google Gemini API and return AI response."""
+    headers = {"Content-Type": "application/json"}
+    params = {"key": API_KEY}
+
+    data = {
+        "contents": [{"parts": [{"text": prompt}]}]
+    }
+
+    try:
+        response = requests.post(API_URL, headers=headers, params=params, json=data)
+        response.raise_for_status()
+        result = response.json()
+        return result["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception as e:
+        return f"⚠️ Error: {e}"
+
+# ----------------------------- APP TITLE -----------------------------
+st.title("🎓 AI-Powered Learning Assistant")
+st.markdown("Empowering students with smart study tools — explain, summarize, and generate quizzes effortlessly.")
+
+# ----------------------------- NAVIGATION MENU -----------------------------
+menu = st.sidebar.radio("📚 Select Feature", ["AI Study Buddy", "Lecture Voice-to-Notes"])
+
+# ----------------------------- AI STUDY BUDDY -----------------------------
+if menu == "AI Study Buddy":
+    st.header("🧩 AI Study Buddy — Understand & Revise Smarter")
+    st.markdown("Type or paste your topic or study material below:")
+
+    user_input = st.text_area("✏️ Enter your text or question:", height=200, placeholder="e.g., Explain Newton’s laws of motion in simple terms")
+
+    task = st.selectbox("🎯 Choose what you want to do:", [
+        "Explain in simple terms",
+        "Summarize key points",
+        "Generate quiz questions",
+        "Create flashcards"
+    ])
+
+    if st.button("✨ Generate"):
+        if user_input.strip():
+            prompt = f"{task} the following content:\n\n{user_input}"
+            with st.spinner("Generating response..."):
+                output = generate_ai_response(prompt)
+            st.success("✅ Done!")
+            st.markdown("### 🧠 Output:")
+            st.write(output)
+        else:
+            st.warning("Please enter some text to process.")
+
+# ----------------------------- LECTURE VOICE-TO-NOTES -----------------------------
+elif menu == "Lecture Voice-to-Notes":
+    st.header("🎤 Lecture Voice-to-Notes Generator")
+    st.markdown("Upload a lecture audio file (MP3/WAV) and get AI-generated notes, summary, and quizzes.")
+
+    uploaded_file = st.file_uploader("📂 Upload Lecture Audio", type=["mp3", "wav"])
+
+    if uploaded_file:
+        st.audio(uploaded_file, format="audio/mp3")
+        st.info("⏳ Simulating transcription process (replace this with actual speech-to-text module).")
+
+        # Placeholder: In real version, integrate Whisper or Google Speech-to-Text
+        fake_transcription = "Today we will learn about photosynthesis. It is the process by which plants make food using sunlight..."
+        st.write("🗒️ **Transcribed Text (sample):**")
+        st.write(fake_transcription)
+
+        st.subheader("🧾 Generate Notes / Summary / Quiz")
+        action = st.selectbox("Choose output type", ["Summarize lecture", "Generate quiz", "Create flashcards"])
+
+        if st.button("🚀 Generate Notes"):
+            prompt = f"{action} for the following lecture transcript:\n\n{fake_transcription}"
+            with st.spinner("Generating..."):
+                output = generate_ai_response(prompt)
+            st.success("✅ Generated successfully!")
+            st.markdown("### 📘 Output:")
+            st.write(output)
+
+# ----------------------------- FOOTER -----------------------------
+st.markdown("---")
+st.markdown(
+    "<center>Developed for IBM SkillsBuild Internship | Powered by Google Gemini API</center>",
+    unsafe_allow_html=True
+)
