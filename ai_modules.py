@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 
-API_KEY = "https://aistudio.google.com.apikey"
+API_KEY = "AIzaSyAjwX-7ymrT5RBObzDkd2nhCFflfXEA2ts"
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
 def generate_ai_response(prompt):
