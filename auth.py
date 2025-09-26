@@ -1,12 +1,11 @@
 import streamlit as st
 from database import create_user, authenticate
-
-def main():
-    # -------------------- PAGE CONFIG --------------------
-    #st.set_page_config(page_title="AI Learning Assistant | Login", layout="centered")
-    if "page_configured" not in st.session_state:
+if "page_configured" not in st.session_state:
         st.set_page_config(page_title="AI Learning Assistant | Login", layout="centered")
         st.session_state["page_configured"] = True
+
+def main():
+    
 
     # -------------------- PAGE STYLING --------------------
     page_bg_img = '''
