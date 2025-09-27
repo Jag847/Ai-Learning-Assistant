@@ -3,21 +3,7 @@ import requests
 
 API_KEY = "AIzaSyAjwX-7ymrT5RBObzDkd2nhCFflfXEA2ts"  # your raw key
 MODEL = "gemini-2.0-flash"
-URL =curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent" \
-  -H 'Content-Type: application/json' \
-  -H 'X-goog-api-key: AIzaSyAjwX-7ymrT5RBObzDkd2nhCFflfXEA2ts' \
-  -X POST \
-  -d '{
-    "contents": [
-      {
-        "parts": [
-          {
-            "text": "Explain how AI works in a few words"
-          }
-        ]
-      }
-    ]
-  }'
+URL =f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={API_KEY}"
 
 headers = {"Content-Type": "application/json"}
 
@@ -36,7 +22,15 @@ else:
 def generate_ai_response(prompt):
     headers = {"Content-Type": "application/json"}
     
-    data = {"contents": [{"parts": [{"text": prompt}]}]}
+    data = {
+        "contents": [
+            {"parts": [{"text": prompt}]}
+        ],
+        "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 300
+        }
+    } 
 
     try:
         response = requests.post(URL, headers=headers, json=data)
