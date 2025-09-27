@@ -2,8 +2,22 @@ import streamlit as st
 import requests
 
 API_KEY = "AIzaSyAjwX-7ymrT5RBObzDkd2nhCFflfXEA2ts"  # your raw key
-MODEL = "gemini-1.5-flash"
-URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateMessage?key={API_KEY}"
+MODEL = "gemini-2.0-flash"
+URL =curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent" \
+  -H 'Content-Type: application/json' \
+  -H 'X-goog-api-key: AIzaSyAjwX-7ymrT5RBObzDkd2nhCFflfXEA2ts' \
+  -X POST \
+  -d '{
+    "contents": [
+      {
+        "parts": [
+          {
+            "text": "Explain how AI works in a few words"
+          }
+        ]
+      }
+    ]
+  }'
 
 headers = {"Content-Type": "application/json"}
 
