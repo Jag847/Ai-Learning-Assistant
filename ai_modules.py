@@ -5,16 +5,16 @@ API_KEY = "AIzaSyAjwX-7ymrT5RBObzDkd2nhCFflfXEA2ts"  # your raw key
 MODEL = "gemini-2.0-flash"
 URL =f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={API_KEY}"
 
-headers = {"Content-Type": "application/json"}
+#headers = {"Content-Type": "application/json"}
 
 
 
-response = requests.post(URL, headers=headers, json=payload)
+#response = requests.post(URL, headers=headers, json=payload)
 
-if response.status_code == 200:
-    print(response.json())
-else:
-    print("Error:", response.status_code, response.text)
+#if response.status_code == 200:
+    #print(response.json())
+#else:
+    #print("Error:", response.status_code, response.text)
 def generate_ai_response(prompt):
     headers = {"Content-Type": "application/json"}
     
