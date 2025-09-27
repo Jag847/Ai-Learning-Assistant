@@ -7,11 +7,7 @@ URL =f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateC
 
 headers = {"Content-Type": "application/json"}
 
-payload = {
-    "prompt": {"text": "Explain Newton's Laws in simple terms."},
-    "temperature": 0.7,
-    "maxOutputTokens": 300
-}
+
 
 response = requests.post(URL, headers=headers, json=payload)
 
@@ -36,7 +32,7 @@ def generate_ai_response(prompt):
         response = requests.post(URL, headers=headers, json=data)
         response.raise_for_status()
         result = response.json()
-        return result["candidates"][0]["content"][0]["text"]
+        return result["candidates"][0]["content"]["parts"][0]["text"]
     except Exception as e:
         return f"⚠️ Error: {e}"
 
