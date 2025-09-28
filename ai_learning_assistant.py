@@ -50,13 +50,16 @@ def main():
     st.markdown(transition_css, unsafe_allow_html=True)
 
     # -------------------- PAGE ROUTING --------------------
-    user_id = user.get("id", 0) if isinstance(user, dict) else 0
+    if isinstance(user, dict):
+        user_id = user.get("id", 0)  # default to 0 if 'id' not present
+    else:
+         user_id = 0  # if user is a string, set default ID
 
     if st.session_state.page == "welcome":
         st.session_state.transition = "fade"
         show_welcome_page(username)
     elif st.session_state.page == "main_app":
-        st.session_state.transition = "slide"
+         st.session_state.transition = "slide"
         run_ai_learning_assistant(username, user_id)
     elif st.session_state.page == "quiz":
         st.session_state.transition = "fade"
