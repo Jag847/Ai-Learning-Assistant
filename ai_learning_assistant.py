@@ -12,28 +12,8 @@ from ai_modules import (
     update_quiz_stats
 )
 
-# ----------------------------- STREAMLIT CONFIG -----------------------------
+# ----------------------------- PAGE CONFIG -----------------------------
 st.set_page_config(page_title="AI Learning Assistant", page_icon="🤖", layout="wide")
-
-
-# ----------------------------- DEVELOPMENT PAGE -----------------------------
-def show_development_page(user_id):
-    st.subheader("📊 Your Development Dashboard")
-    results = get_quiz_results(user_id)
-    if not results:
-        st.info("No quiz taken yet. Take a quiz to see progress.")
-        return
-
-    df = pd.DataFrame(results, columns=["score", "total", "timestamp"])
-    df["percentage"] = df["score"] / df["total"] * 100
-
-    st.markdown("### Progress Over Time")
-    fig = px.line(df, x="timestamp", y="percentage", title="Quiz Scores Over Time", markers=True)
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("### Live Stats")
-    update_quiz_stats()
-
 
 # ----------------------------- MAIN FUNCTION -----------------------------
 def main():
@@ -42,15 +22,24 @@ def main():
 
     # -------------------- AUTHENTICATION --------------------
     authenticator = load_auth()
-    if callable(authenticator.login):
-        user, logged_in, username = authenticator.login()
+
+    # Safe login handling
+    if callable(getattr(authenticator, "login", None)):
+        result = authenticator.login()
+        if isinstance(result, tuple) and len(result) == 3:
+            user, logged_in, username = result
+        else:
+            user = result
+            logged_in = True
+            username = str(result)
     else:
-        user, logged_in, username = authenticator, True, str(authenticator)
+        user = authenticator
+        logged_in = True
+        username = str(authenticator)
 
     if not logged_in:
         st.stop()
 
-    # -------------------- SIDEBAR --------------------
     st.sidebar.success(f"👤 Logged in as {username}")
     if st.sidebar.button("🔓 Logout"):
         st.session_state.clear()
@@ -80,29 +69,56 @@ def main():
     """
     st.markdown(transition_css, unsafe_allow_html=True)
 
-    # -------------------- SAFE USER HANDLING --------------------
+    # -------------------- SAFE USER ID --------------------
+    user_id = 0
     if isinstance(user, dict):
-        user_dict = user
-    else:
-        user_dict = {"id": 0, "username": username}
+        user_id = user.get("id", 0)
 
     # -------------------- PAGE ROUTING --------------------
     if st.session_state.page == "welcome":
         st.session_state.transition = "fade"
-        show_welcome_page(user_dict["username"])
-
+        show_welcome_page(username)
     elif st.session_state.page == "main_app":
         st.session_state.transition = "slide"
-        run_ai_learning_assistant(user_dict["username"], user_dict["id"])
-
+        run_ai_learning_assistant(username, user_id)
     elif st.session_state.page == "quiz":
         st.session_state.transition = "fade"
-        run_quiz(user_dict["id"])
-
+        run_quiz(user_id)
     elif st.session_state.page == "development":
         st.session_state.transition = "fade"
-        show_development_page(user_dict["id"])
+        show_development_page(user_id)
 
+# ----------------------------- DEVELOPMENT PAGE -----------------------------
+def show_development_page(user_id):
+    st.subheader("📊 Your Development Dashboard")
+    results = get_quiz_results(user_id)
+    if not results:
+        st.info("No quiz taken yet. Take a quiz to see progress.")
+        return
+
+    # Safe DataFrame creation
+    try:
+        df = pd.DataFrame(results)
+        if not {"score", "total", "timestamp"}.issubset(df.columns):
+            df.columns = ["score", "total", "timestamp"]
+    except Exception:
+        st.error("Error processing quiz results.")
+        return
+
+    df["percentage"] = df["score"] / df["total"] * 100
+
+    st.markdown("### Progress Over Time")
+    try:
+        fig = px.line(df, x="timestamp", y="percentage", title="Quiz Scores Over Time", markers=True)
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception:
+        st.error("Error generating progress chart.")
+
+    st.markdown("### Live Stats")
+    try:
+        update_quiz_stats()
+    except Exception:
+        st.warning("Unable to update live stats at this moment.")
 
 # ----------------------------- ENTRY POINT -----------------------------
 if __name__ == "__main__":
