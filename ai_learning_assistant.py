@@ -12,25 +12,22 @@ from ai_modules import (
     update_quiz_stats,
 )
 
-# ----------------------------- PAGE CONFIG -----------------------------
-# Safely call set_page_config only once
-if "page_config_set" not in st.session_state:
-    st.set_page_config(page_title="AI Learning Assistant", page_icon="🤖", layout="wide")
-    st.session_state.page_config_set = True
-
 # ----------------------------- MAIN FUNCTION -----------------------------
+# Must be first Streamlit command
+st.set_page_config(page_title="AI Learning Assistant", page_icon="🤖", layout="wide")
+
 def main():
     # -------------------- CSS --------------------
     inject_css()  # inject modern styles
 
     # -------------------- AUTHENTICATION --------------------
     authenticator = load_auth()
-    login_result = authenticator.login() if callable(authenticator.login) else authenticator
-
-    if isinstance(login_result, tuple) and len(login_result) == 3:
-        user, logged_in, username = login_result
+    # Safely call login if it's callable
+    if callable(getattr(authenticator, "login", None)):
+        user, logged_in, username = authenticator.login()
     else:
-        user, logged_in, username = login_result, True, str(login_result)
+        # If login is not callable, treat authenticator as username string
+        user, logged_in, username = authenticator, True, str(authenticator)
 
     if not logged_in:
         st.stop()
@@ -39,6 +36,14 @@ def main():
     if st.sidebar.button("🔓 Logout"):
         st.session_state.clear()
         st.experimental_rerun()
+
+    # -------------------- SAFE USER DICT --------------------
+    if isinstance(user, dict):
+        user_dict = user
+        user_id = user.get("id", 0)
+    else:
+        user_dict = {"id": 0, "username": str(user)}
+        user_id = 0
 
     # -------------------- SESSION STATE --------------------
     if "page" not in st.session_state:
@@ -64,22 +69,19 @@ def main():
     """
     st.markdown(transition_css, unsafe_allow_html=True)
 
-    # -------------------- DETERMINE USER ID --------------------
-    user_id = user.get("id", 0) if isinstance(user, dict) else 0
-
     # -------------------- PAGE ROUTING --------------------
     if st.session_state.page == "welcome":
         st.session_state.transition = "fade"
         show_welcome_page(username)
     elif st.session_state.page == "main_app":
         st.session_state.transition = "slide"
-        run_ai_learning_assistant(username, user_id)
+        run_ai_learning_assistant(user_dict["username"], user_dict["id"])
     elif st.session_state.page == "quiz":
         st.session_state.transition = "fade"
-        run_quiz(user_id)
+        run_quiz(user_dict["id"])
     elif st.session_state.page == "development":
         st.session_state.transition = "fade"
-        show_development_page(user_id)
+        show_development_page(user_dict["id"])
 
 # ----------------------------- DEVELOPMENT PAGE -----------------------------
 def show_development_page(user_id):
