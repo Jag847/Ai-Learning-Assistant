@@ -1,19 +1,19 @@
 import sqlite3
 import hashlib
 import os
+from datetime import datetime
 
 # -------------------- DATABASE SETUP --------------------
 DB_FILE = "users.db"
 
 def get_connection():
-    """Connect to the SQLite database."""
     return sqlite3.connect(DB_FILE)
 
 def create_tables():
-    """Create users and quiz tables if they don't exist."""
+    """Create users, quiz_results, badges tables."""
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     # Users table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
@@ -23,42 +23,46 @@ def create_tables():
             password TEXT NOT NULL
         )
     ''')
-    
+
     # Quiz results table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS quiz_results (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             score INTEGER NOT NULL,
-            total_questions INTEGER NOT NULL,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            total INTEGER NOT NULL,
+            timestamp TEXT NOT NULL,
             FOREIGN KEY(user_id) REFERENCES users(id)
         )
     ''')
-    
+
+    # Badges table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS badges (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            badge TEXT NOT NULL,
+            awarded_on TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+    ''')
+
     conn.commit()
     conn.close()
 
-# Run on import to ensure tables exist
 create_tables()
 
-# -------------------- HASHING FUNCTION --------------------
+# -------------------- HASHING --------------------
 def hash_password(password: str) -> str:
-    """Return a SHA-256 hashed password."""
     return hashlib.sha256(password.encode()).hexdigest()
 
-# -------------------- USER CREATION --------------------
+# -------------------- USER FUNCTIONS --------------------
 def create_user(name: str, email: str, password: str):
-    """Create a new user if not already existing."""
     conn = get_connection()
     cursor = conn.cursor()
     hashed_pw = hash_password(password)
-
     try:
-        cursor.execute(
-            "INSERT INTO users (name, email, password) VALUES (?, ?, ?)",
-            (name, email, hashed_pw)
-        )
+        cursor.execute("INSERT INTO users (name,email,password) VALUES (?,?,?)", (name,email,hashed_pw))
         conn.commit()
         user_id = cursor.lastrowid
         conn.close()
@@ -67,51 +71,47 @@ def create_user(name: str, email: str, password: str):
         conn.close()
         return None
 
-# -------------------- USER AUTHENTICATION --------------------
 def authenticate(name: str, password: str):
-    """Check if user credentials are correct."""
     conn = get_connection()
     cursor = conn.cursor()
     hashed_pw = hash_password(password)
-
-    cursor.execute(
-        "SELECT id, name, email FROM users WHERE name=? AND password=?",
-        (name, hashed_pw)
-    )
+    cursor.execute("SELECT id,name,email FROM users WHERE name=? AND password=?", (name,hashed_pw))
     user = cursor.fetchone()
     conn.close()
-
     if user:
         return {"id": user[0], "name": user[1], "email": user[2]}
-    else:
-        return None
+    return None
 
 # -------------------- QUIZ RESULTS --------------------
-def save_quiz_result(user_id: int, score: int, total_questions: int):
-    """Store a user's quiz result in the database."""
+def save_quiz_result(user_id: int, score: int, total: int):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO quiz_results (user_id, score, total_questions) VALUES (?, ?, ?)",
-        (user_id, score, total_questions)
-    )
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute("INSERT INTO quiz_results (user_id,score,total,timestamp) VALUES (?,?,?,?)", (user_id,score,total,timestamp))
     conn.commit()
     conn.close()
 
 def get_quiz_results(user_id: int):
-    """Retrieve all quiz results for a specific user."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT score, total_questions, timestamp FROM quiz_results WHERE user_id=? ORDER BY timestamp",
-        (user_id,)
-    )
+    cursor.execute("SELECT score,total,timestamp FROM quiz_results WHERE user_id=? ORDER BY timestamp", (user_id,))
     results = cursor.fetchall()
     conn.close()
     return results
 
-# -------------------- DEBUG UTILITY --------------------
-if __name__ == "__main__":
-    print("✅ Database initialized successfully!")
-    # Optional: create a test user
-    # print(create_user("testuser", "test@gmail.com", "12345"))
+# -------------------- BADGES --------------------
+def award_badge(user_id: int, badge: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    awarded_on = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute("INSERT INTO badges (user_id,badge,awarded_on) VALUES (?,?,?)", (user_id,badge,awarded_on))
+    conn.commit()
+    conn.close()
+
+def get_badges(user_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT badge,awarded_on FROM badges WHERE user_id=? ORDER BY awarded_on", (user_id,))
+    results = cursor.fetchall()
+    conn.close()
+    return results
