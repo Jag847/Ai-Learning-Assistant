@@ -10,6 +10,10 @@ import os
 from streamlit_extras.let_it_rain import rain
 import base64
 
+API_KEY = "AIzaSyAjwX-7ymrT5RBObzDkd2nhCFflfXEA2ts"
+MODEL = "gemini-2.0-flash"
+URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={API_KEY}"
+
 # -------------------- INJECT CSS --------------------
 def inject_css():
     st.markdown("""
