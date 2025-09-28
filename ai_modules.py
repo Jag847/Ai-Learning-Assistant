@@ -4,6 +4,9 @@ import time
 import pandas as pd
 import plotly.express as px
 from database import save_quiz_result, get_quiz_results
+from fpdf import FPDF
+import tempfile
+import os
 
 # -------------------- AI CALL FUNCTION --------------------
 def generate_ai_response(prompt):
@@ -13,7 +16,7 @@ def generate_ai_response(prompt):
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
             "temperature": 0.7,
-            "maxOutputTokens": 300
+            "maxOutputTokens": 500
         }
     }
 
@@ -25,54 +28,101 @@ def generate_ai_response(prompt):
     except Exception as e:
         return f"⚠️ Error: {e}"
 
-# -------------------- QUIZ DATA --------------------
-quiz_questions = [
-    {"question": "What is the capital of France?",
-     "options": ["Berlin", "Paris", "Rome", "Madrid"], "answer": "Paris", "topic": "Geography"},
-    {"question": "What is 7 x 8?",
-     "options": ["54", "56", "64", "58"], "answer": "56", "topic": "Math"},
-    {"question": "Which gas do plants absorb?",
-     "options": ["Oxygen", "Carbon Dioxide", "Nitrogen", "Hydrogen"], "answer": "Carbon Dioxide", "topic": "Biology"}
-]
+# -------------------- QUIZ GENERATION FROM FILE --------------------
+def generate_quiz_from_file(file):
+    """Generates quiz questions and answers from uploaded file using AI."""
+    file_content = file.read().decode("utf-8", errors="ignore") if hasattr(file, 'read') else ""
+    prompt = f"Generate a quiz with questions and answers based on the following content:\n{file_content}\nFormat as JSON: {{'question': '', 'options': [], 'answer': '', 'topic': ''}}"
+    ai_response = generate_ai_response(prompt)
 
-# -------------------- QUIZ FUNCTIONS --------------------
+    try:
+        import json
+        quiz = json.loads(ai_response)
+        if isinstance(quiz, dict):
+            quiz = [quiz]
+        return quiz
+    except Exception:
+        st.warning("AI did not return valid JSON. Using fallback quiz.")
+        # Fallback sample quiz
+        return [
+            {"question": "Sample Question?", "options": ["A", "B", "C", "D"], "answer": "A", "topic": "Sample"}
+        ]
+
+# -------------------- QUIZ FUNCTION --------------------
 def run_quiz(user_id):
-    st.subheader("📝 Take the Quiz")
+    st.subheader("📝 AI-Powered Quiz")
 
+    # Upload file option
+    uploaded_file = st.file_uploader("Upload a PDF/TXT/DOCX to generate quiz:", type=["pdf", "txt", "docx"])
+    quiz_data = st.session_state.get("quiz_data", None)
+
+    if uploaded_file:
+        with st.spinner("Generating quiz from file..."):
+            quiz_data = generate_quiz_from_file(uploaded_file)
+            st.session_state.quiz_data = quiz_data
+            st.success("✅ Quiz generated!")
+
+    if not quiz_data:
+        st.info("Upload a file or enter text in AI Study Buddy to generate quiz.")
+        return
+
+    # Store answers
     if "quiz_answers" not in st.session_state:
         st.session_state.quiz_answers = {}
 
-    # Display questions
-    for i, q in enumerate(quiz_questions):
+    # Display questions dynamically
+    for i, q in enumerate(quiz_data):
         st.markdown(f"**Q{i+1}: {q['question']}**")
-        for option in q["options"]:
-            if st.button(option, key=f"{i}_{option}"):
-                st.session_state.quiz_answers[i] = option
+        if q.get("options"):
+            for option in q["options"]:
+                if st.button(option, key=f"{i}_{option}"):
+                    st.session_state.quiz_answers[i] = option
+        else:
+            ans = st.text_input(f"Answer for Q{i+1}", key=f"input_{i}")
+            if ans:
+                st.session_state.quiz_answers[i] = ans
         st.markdown("---")
 
+    # Submit
     if st.button("📤 Submit Quiz"):
-        score = sum(1 for i, q in enumerate(quiz_questions)
-                    if st.session_state.quiz_answers.get(i) == q["answer"])
-        st.success(f"✅ You scored {score}/{len(quiz_questions)}")
-        save_quiz_result(user_id, score, len(quiz_questions))
+        score = 0
+        for i, q in enumerate(quiz_data):
+            if str(st.session_state.quiz_answers.get(i)).strip().lower() == str(q["answer"]).strip().lower():
+                score += 1
+
+        st.success(f"✅ You scored {score}/{len(quiz_data)}")
+        save_quiz_result(user_id, score, len(quiz_data))
+
+        # AI-generated weak topics analysis
+        weak_topics = [q.get("topic", "General") for i, q in enumerate(quiz_data)
+                       if str(st.session_state.quiz_answers.get(i)).strip().lower() != str(q["answer"]).strip().lower()]
+        if weak_topics:
+            prompt = f"Provide detailed tips and areas to improve for the following topics: {', '.join(weak_topics)}"
+            insights = generate_ai_response(prompt)
+            st.markdown("### 🔍 Areas to Improve:")
+            st.write(insights)
+        else:
+            st.success("🎉 Excellent! All answers correct.")
+
         st.experimental_rerun()
 
+
+# -------------------- DEVELOPMENT / PROGRESS --------------------
 def show_progress(user_id):
     st.subheader("📊 Your Development")
     results = get_quiz_results(user_id)
-
     if not results:
         st.info("No quiz data yet. Take a quiz first!")
         return
 
-    # Line chart for score progress
     df = pd.DataFrame(results, columns=["Score", "Total", "Timestamp"])
     df["Attempt"] = range(1, len(df) + 1)
-    fig_line = px.line(df, x="Attempt", y="Score", title="Quiz Score Progress",
-                       markers=True, line_shape="spline")
+
+    # Animated line chart
+    fig_line = px.line(df, x="Attempt", y="Score", title="Quiz Score Progress", markers=True, line_shape="spline")
     st.plotly_chart(fig_line, use_container_width=True)
 
-    # Pie chart of last quiz
+    # Pie chart of last attempt
     last_score = df.iloc[-1]
     correct = last_score["Score"]
     wrong = last_score["Total"] - correct
@@ -80,86 +130,29 @@ def show_progress(user_id):
                      title="Last Quiz Results", hole=0.4)
     st.plotly_chart(fig_pie, use_container_width=True)
 
-    # AI insights for improvement
-    weak_topics = [q["topic"] for i, q in enumerate(quiz_questions)
-                   if st.session_state.quiz_answers.get(i) != q["answer"]]
-    if weak_topics:
-        prompt = f"Provide learning tips and improvements for the following topics: {', '.join(weak_topics)}"
-        insights = generate_ai_response(prompt)
-        st.markdown("### 🔍 Areas to Improve:")
-        st.write(insights)
-    else:
-        st.success("🎉 Excellent! You got all questions right.")
+    # Option to download charts + quiz as PDF
+    if st.button("💾 Download Quiz Report as PDF"):
+        pdf_file = create_pdf_report(df, st.session_state.get("quiz_data", []), last_score)
+        st.download_button("Download PDF", data=open(pdf_file, "rb").read(), file_name="quiz_report.pdf", mime="application/pdf")
+        os.remove(pdf_file)
 
-# -------------------- MAIN APP --------------------
-def run_ai_learning_assistant(username: str, user_id: int):
-    # -------------------- PAGE STYLE --------------------
-    st.markdown("""
-    <style>
-    @keyframes slideIn {from {opacity: 0; transform: translateX(80px);}to {opacity: 1; transform: translateX(0);}}
-    .stApp {background-image: linear-gradient(to bottom right, #a8e063, #56ab2f);background-size: cover;background-position: center;color: #2e7d32;animation: slideIn 0.9s ease-out;}
-    .assistant-box {background-color: rgba(255,255,255,0.92);padding: 2.5rem;border-radius: 20px;max-width: 900px;margin: auto;margin-top: 3rem;text-align: center;box-shadow: 0 8px 28px rgba(0,0,0,0.25);animation: slideIn 1.1s ease-out;}
-    .stTextInput > div > div > input {border: 2px solid #81c784;border-radius: 12px;padding: 10px;font-size: 1rem;}
-    .stButton > button {background-color: #43a047 !important;color: white !important;font-size: 1.05rem;border-radius: 10px;padding: 0.6rem 1.8rem;font-weight: 600;transition: all 0.3s ease;box-shadow: 0 4px 12px rgba(67,160,71,0.4);}
-    .stButton > button:hover {background-color: #2e7d32 !important;transform: scale(1.05);box-shadow: 0 6px 18px rgba(46,125,50,0.6);}
-    .response-box {background-color: #f1f8e9;padding: 1rem;border-radius: 12px;margin-top: 1rem;border: 1px solid #c5e1a5;text-align: left;color: #33691e;animation: slideIn 0.8s ease-out;}
-    </style>
-    """, unsafe_allow_html=True)
+def create_pdf_report(df, quiz_data, last_score):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(0, 10, "📊 Quiz Report", ln=True, align="C")
+    pdf.ln(10)
 
-    st.markdown("<div class='assistant-box'>", unsafe_allow_html=True)
-    st.title(f"🎓 Welcome {username}, Your AI Learning Assistant is Ready!")
-    st.sidebar.header("📚 Navigation")
-    menu = st.sidebar.radio("Choose a tool", ["AI Study Buddy", "Lecture Voice-to-Notes", "Your Development"])
-    st.markdown("<hr>", unsafe_allow_html=True)
+    pdf.set_font("Arial", "", 12)
+    pdf.cell(0, 10, f"Latest Score: {last_score['Score']}/{last_score['Total']}", ln=True)
+    pdf.ln(5)
 
-    # -------------------- AI STUDY BUDDY --------------------
-    if menu == "AI Study Buddy":
-        st.subheader("🧩 AI Study Buddy — Understand & Revise Smarter")
-        text = st.text_area("Enter topic or material:", height=200)
-        task = st.selectbox("Choose an action:", ["Explain in simple terms", "Summarize", "Generate quiz", "Create flashcards"])
-        if st.button("✨ Generate"):
-            if text.strip():
-                with st.spinner("⚙️ AI is working..."):
-                    time.sleep(1.0)
-                    result = generate_ai_response(f"{task} this content:\n{text}")
-                st.markdown("<div class='response-box'>", unsafe_allow_html=True)
-                st.success("✅ Result:")
-                st.write(result)
-                st.markdown("</div>", unsafe_allow_html=True)
-            else:
-                st.warning("Please enter some text.")
+    pdf.cell(0, 10, "Quiz Questions and Answers:", ln=True)
+    for i, q in enumerate(quiz_data):
+        pdf.multi_cell(0, 8, f"Q{i+1}: {q['question']}\nAnswer: {q['answer']}\n")
+        pdf.ln(1)
 
-    # -------------------- VOICE TO NOTES --------------------
-    elif menu == "Lecture Voice-to-Notes":
-        st.subheader("🎤 Lecture Voice-to-Notes Generator")
-        file = st.file_uploader("Upload Lecture Audio (mp3/wav)", type=["mp3", "wav"])
-        if file:
-            st.audio(file)
-            st.info("Simulating transcription... (Replace with Whisper/Speech API)")
-            transcription = "Photosynthesis is the process by which green plants convert light energy..."
-            st.markdown("<div class='response-box'>", unsafe_allow_html=True)
-            st.write("🗒️ Transcribed Text:")
-            st.write(transcription)
-            st.markdown("</div>", unsafe_allow_html=True)
-
-            action = st.selectbox("Generate:", ["Summary", "Quiz", "Flashcards"])
-            if st.button("🚀 Generate Notes"):
-                with st.spinner("⚙️ Generating..."):
-                    time.sleep(1.0)
-                    result = generate_ai_response(f"{action} based on: {transcription}")
-                st.markdown("<div class='response-box'>", unsafe_allow_html=True)
-                st.success("✅ Generated:")
-                st.write(result)
-                st.markdown("</div>", unsafe_allow_html=True)
-
-    # -------------------- YOUR DEVELOPMENT --------------------
-    elif menu == "Your Development":
-        show_progress(user_id)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("⬅️ Back to Welcome"):
-        st.session_state["page"] = "welcome"
-        st.session_state["transition"] = "fade"
-        st.rerun()
-
-    st.markdown("</div>", unsafe_allow_html=True)
+    # Save charts as images
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    pdf.output(tmp_file.name)
+    return tmp_file.name
