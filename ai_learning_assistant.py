@@ -1,7 +1,7 @@
 import streamlit as st
 from auth import load_auth
 from welcome import show_welcome_page
-from ai_modules import run_ai_learning_assistant, run_quiz, inject_css
+from ai_modules import run_ai_learning_assistant,run_quiz, inject_css
 
 # ----------------------------- MAIN FUNCTION -----------------------------
 def main():
