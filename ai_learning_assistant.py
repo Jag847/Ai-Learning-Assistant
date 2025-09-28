@@ -1,7 +1,7 @@
 import streamlit as st
 from auth import load_auth
 from welcome import show_welcome_page
-from ai_modules import run_ai_learning_assistant  # Your AI logic
+from ai_modules import run_ai_learning_assistant, run_quiz, show_progress
 
 # ----------------------------- MAIN FUNCTION -----------------------------
 def main():
@@ -66,23 +66,36 @@ def main():
         with st.container():
             st.markdown("<div class='window-box'>", unsafe_allow_html=True)
             show_welcome_page(username)
+            # Buttons to navigate to main app or quiz directly
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🚀 Start AI Study Buddy"):
+                    st.session_state.page = "main_app"
+                    st.session_state.transition = "slide"
+                    st.experimental_rerun()
+            with col2:
+                if st.button("📝 Take Quiz"):
+                    st.session_state.page = "quiz"
+                    st.session_state.transition = "fade"
+                    st.experimental_rerun()
             st.markdown("</div>", unsafe_allow_html=True)
+
     elif st.session_state.page == "main_app":
         st.session_state.transition = "slide"
         with st.container():
             st.markdown("<div class='window-box'>", unsafe_allow_html=True)
             run_ai_learning_assistant(username, user_id)
             st.markdown("</div>", unsafe_allow_html=True)
+
     elif st.session_state.page == "quiz":
         st.session_state.transition = "fade"
-        from ai_modules import run_quiz
         with st.container():
             st.markdown("<div class='window-box'>", unsafe_allow_html=True)
             run_quiz(user_id)
             st.markdown("</div>", unsafe_allow_html=True)
+
     elif st.session_state.page == "development":
         st.session_state.transition = "fade"
-        from ai_modules import show_progress
         with st.container():
             st.markdown("<div class='window-box'>", unsafe_allow_html=True)
             show_progress(user_id)
