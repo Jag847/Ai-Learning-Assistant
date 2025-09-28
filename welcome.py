@@ -6,11 +6,16 @@ def show_welcome_page(username: str):
     # -------------------- PAGE STYLE --------------------
     page_bg = """
     <style>
+    @keyframes fadeIn {
+        from {opacity: 0; transform: translateY(30px);}
+        to {opacity: 1; transform: translateY(0);}
+    }
     .stApp {
         background-image: linear-gradient(to bottom right, #a8e063, #56ab2f);
         background-size: cover;
         background-position: center;
         color: #2e7d32;
+        animation: fadeIn 1s ease-out;
     }
     .welcome-box {
         background-color: rgba(255, 255, 255, 0.9);
@@ -21,6 +26,7 @@ def show_welcome_page(username: str):
         margin-top: 6rem;
         text-align: center;
         box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+        animation: fadeIn 1.2s ease-out;
     }
     h1, h2, h3 {
         color: #2e7d32 !important;
@@ -42,9 +48,16 @@ def show_welcome_page(username: str):
         padding: 0.7rem 2rem;
         font-weight: 600;
         border: none;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(67, 160, 71, 0.4);
     }
     .stButton > button:hover {
         background-color: #2e7d32 !important;
+        box-shadow: 0 6px 16px rgba(46, 125, 50, 0.6);
+        transform: scale(1.03);
+    }
+    img {
+        animation: fadeIn 1.4s ease-out;
     }
     </style>
     """
@@ -62,6 +75,7 @@ def show_welcome_page(username: str):
 
         if st.button("🚀 Let's Get Started"):
             st.session_state["page"] = "main_app"  # Navigate to the main assistant page
+            st.session_state["transition"] = "slide"
             st.rerun()
 
         st.markdown("</div>", unsafe_allow_html=True)
