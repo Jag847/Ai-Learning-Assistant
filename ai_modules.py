@@ -3,7 +3,7 @@ import requests
 import time
 import pandas as pd
 import plotly.express as px
-
+from database import save_quiz_result, get_quiz_results
 
 # -------------------- AI CALL FUNCTION --------------------
 def generate_ai_response(prompt):
@@ -25,36 +25,24 @@ def generate_ai_response(prompt):
     except Exception as e:
         return f"⚠️ Error: {e}"
 
-
 # -------------------- QUIZ DATA --------------------
-# Example questions, replace with dynamic AI-generated quiz if needed
 quiz_questions = [
-    {
-        "question": "What is the capital of France?",
-        "options": ["Berlin", "Paris", "Rome", "Madrid"],
-        "answer": "Paris",
-        "topic": "Geography"
-    },
-    {
-        "question": "What is 7 x 8?",
-        "options": ["54", "56", "64", "58"],
-        "answer": "56",
-        "topic": "Math"
-    },
-    {
-        "question": "Which gas do plants absorb?",
-        "options": ["Oxygen", "Carbon Dioxide", "Nitrogen", "Hydrogen"],
-        "answer": "Carbon Dioxide",
-        "topic": "Biology"
-    }
+    {"question": "What is the capital of France?",
+     "options": ["Berlin", "Paris", "Rome", "Madrid"], "answer": "Paris", "topic": "Geography"},
+    {"question": "What is 7 x 8?",
+     "options": ["54", "56", "64", "58"], "answer": "56", "topic": "Math"},
+    {"question": "Which gas do plants absorb?",
+     "options": ["Oxygen", "Carbon Dioxide", "Nitrogen", "Hydrogen"], "answer": "Carbon Dioxide", "topic": "Biology"}
 ]
 
-# -------------------- APP FUNCTIONS --------------------
-def run_quiz():
+# -------------------- QUIZ FUNCTIONS --------------------
+def run_quiz(user_id):
     st.subheader("📝 Take the Quiz")
+
     if "quiz_answers" not in st.session_state:
         st.session_state.quiz_answers = {}
 
+    # Display questions
     for i, q in enumerate(quiz_questions):
         st.markdown(f"**Q{i+1}: {q['question']}**")
         for option in q["options"]:
@@ -65,38 +53,32 @@ def run_quiz():
     if st.button("📤 Submit Quiz"):
         score = sum(1 for i, q in enumerate(quiz_questions)
                     if st.session_state.quiz_answers.get(i) == q["answer"])
-        st.session_state.last_score = score
         st.success(f"✅ You scored {score}/{len(quiz_questions)}")
-        store_score(score)
+        save_quiz_result(user_id, score, len(quiz_questions))
         st.experimental_rerun()
 
-
-def store_score(score):
-    if "scores" not in st.session_state:
-        st.session_state.scores = []
-    st.session_state.scores.append(score)
-
-
-def show_progress():
+def show_progress(user_id):
     st.subheader("📊 Your Development")
-    if "scores" not in st.session_state or len(st.session_state.scores) == 0:
+    results = get_quiz_results(user_id)
+
+    if not results:
         st.info("No quiz data yet. Take a quiz first!")
         return
 
-    # Score progress over time
-    df = pd.DataFrame({"Attempt": list(range(1, len(st.session_state.scores)+1)),
-                       "Score": st.session_state.scores})
+    # Line chart for score progress
+    df = pd.DataFrame(results, columns=["Score", "Total", "Timestamp"])
+    df["Attempt"] = range(1, len(df) + 1)
     fig_line = px.line(df, x="Attempt", y="Score", title="Quiz Score Progress",
                        markers=True, line_shape="spline")
     st.plotly_chart(fig_line, use_container_width=True)
 
     # Pie chart of last quiz
-    if "last_score" in st.session_state:
-        correct = st.session_state.last_score
-        wrong = len(quiz_questions) - correct
-        fig_pie = px.pie(names=["Correct", "Incorrect"], values=[correct, wrong],
-                         title="Last Quiz Results", hole=0.4)
-        st.plotly_chart(fig_pie, use_container_width=True)
+    last_score = df.iloc[-1]
+    correct = last_score["Score"]
+    wrong = last_score["Total"] - correct
+    fig_pie = px.pie(names=["Correct", "Incorrect"], values=[correct, wrong],
+                     title="Last Quiz Results", hole=0.4)
+    st.plotly_chart(fig_pie, use_container_width=True)
 
     # AI insights for improvement
     weak_topics = [q["topic"] for i, q in enumerate(quiz_questions)
@@ -109,9 +91,8 @@ def show_progress():
     else:
         st.success("🎉 Excellent! You got all questions right.")
 
-
-# -------------------- MAIN APP INTERFACE --------------------
-def run_ai_learning_assistant(username: str):
+# -------------------- MAIN APP --------------------
+def run_ai_learning_assistant(username: str, user_id: int):
     # -------------------- PAGE STYLE --------------------
     st.markdown("""
     <style>
@@ -125,7 +106,6 @@ def run_ai_learning_assistant(username: str):
     </style>
     """, unsafe_allow_html=True)
 
-    # -------------------- HEADER --------------------
     st.markdown("<div class='assistant-box'>", unsafe_allow_html=True)
     st.title(f"🎓 Welcome {username}, Your AI Learning Assistant is Ready!")
     st.sidebar.header("📚 Navigation")
@@ -174,7 +154,7 @@ def run_ai_learning_assistant(username: str):
 
     # -------------------- YOUR DEVELOPMENT --------------------
     elif menu == "Your Development":
-        show_progress()
+        show_progress(user_id)
 
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("⬅️ Back to Welcome"):
