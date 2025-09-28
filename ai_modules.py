@@ -67,10 +67,10 @@ def update_quiz_stats():
     quiz_data = st.session_state.get("quiz_data", [])
     answers = st.session_state.get("quiz_answers", {})
     total_answered = len(answers)
-    total_correct = sum(1 for i,q in enumerate(quiz_data) if str(answers.get(i,"")).strip().lower() == str(q["answer"]).strip().lower())
+    total_correct = sum(1 for i,q in enumerate(quiz_data) if str(answers.get(i,"")).strip().lower() == str(q.get("answer","")).strip().lower())
     total_incorrect = total_answered - total_correct
     weak_topics = [q.get("topic","General") for i,q in enumerate(quiz_data)
-                   if str(answers.get(i,"")).strip().lower() != str(q["answer"]).strip().lower()]
+                   if str(answers.get(i,"")).strip().lower() != str(q.get("answer","")).strip().lower()]
 
     col1,col2,col3,col4 = st.columns(4)
     col1.metric("✅ Correct", total_correct)
@@ -84,7 +84,10 @@ def update_quiz_stats():
     return fig_pie
 
 # -------------------- AI STUDY BUDDY --------------------
-def run_ai_learning_assistant(username, user_id):
+def run_ai_learning_assistant(safe_user):
+    username = safe_user.get("username","User")
+    user_id = safe_user.get("id",0)
+    
     st.markdown(f"## 🎓 Welcome {username} — AI Learning Dashboard")
     inject_css()
     col1,col2 = st.columns([2,1])
@@ -126,7 +129,7 @@ def run_quiz(user_id):
     if not quiz_data: st.info("No quiz available."); return
     if "quiz_answers" not in st.session_state: st.session_state.quiz_answers = {}
     for i,q in enumerate(quiz_data):
-        st.markdown(f"**Q{i+1}: {q['question']}**")
+        st.markdown(f"**Q{i+1}: {q.get('question','')}**")
         if q.get("options"):
             for option in q["options"]:
                 if st.button(option, key=f"{i}_{option}"):
@@ -138,11 +141,11 @@ def run_quiz(user_id):
         st.markdown("---")
         fig_pie = update_quiz_stats()
     if st.button("📤 Submit Quiz"):
-        score = sum(1 for i,q in enumerate(quiz_data) if str(st.session_state.quiz_answers.get(i,"")).strip().lower() == str(q["answer"]).strip().lower())
+        score = sum(1 for i,q in enumerate(quiz_data) if str(st.session_state.quiz_answers.get(i,"")).strip().lower() == str(q.get("answer","")).strip().lower())
         st.success(f"✅ Score: {score}/{len(quiz_data)}")
         save_quiz_result(user_id, score, len(quiz_data))
         weak_topics = [q.get("topic","General") for i,q in enumerate(quiz_data)
-                       if str(st.session_state.quiz_answers.get(i,"")).strip().lower() != str(q["answer"]).strip().lower()]
+                       if str(st.session_state.quiz_answers.get(i,"")).strip().lower() != str(q.get("answer","")).strip().lower()]
         if weak_topics:
             insights = generate_ai_response(f"Provide tips to improve for: {', '.join(weak_topics)}")
             st.markdown("### 🔍 Areas to Improve")
@@ -150,51 +153,9 @@ def run_quiz(user_id):
         else:
             st.success("🎉 Excellent! All correct.")
         if score/len(quiz_data) >= 0.8: rain(emoji="🎉", font_size=30, falling_speed=5, animation_length=2)
-        pdf_file = create_pdf_report_with_chart(quiz_data, st.session_state.quiz_answers, weak_topics, fig_pie)
+        pdf_file = create_pdf_report_with_chart(quiz_data, st.session_state.quiz_answers, weak_topics, update_quiz_stats())
         st.download_button("💾 Download Quiz PDF", data=open(pdf_file,"rb").read(),
                            file_name="quiz_report.pdf", mime="application/pdf")
         os.remove(pdf_file)
         display_badges(user_id, score)
         st.experimental_rerun()
-
-# -------------------- PDF --------------------
-def create_pdf_report_with_chart(quiz_data, answers, weak_topics, fig_pie):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial","B",16)
-    pdf.cell(0,10,"📊 Quiz Report", ln=True, align="C")
-    pdf.ln(10)
-    correct_count = sum(1 for i,q in enumerate(quiz_data) if str(answers.get(i,"")).strip().lower() == str(q["answer"]).strip().lower())
-    pdf.set_font("Arial","",12)
-    pdf.cell(0,10,f"Score: {correct_count}/{len(quiz_data)}", ln=True)
-    pdf.ln(5)
-    pdf.cell(0,10,"Questions & Answers:", ln=True)
-    pdf.ln(3)
-    for i,q in enumerate(quiz_data):
-        user_ans = answers.get(i,"")
-        pdf.multi_cell(0,8,f"Q{i+1}: {q['question']}\nCorrect: {q['answer']}\nYour Answer: {user_ans}\nTopic: {q.get('topic','General')}\n")
-        pdf.ln(1)
-    if weak_topics:
-        pdf.cell(0,10,"Weak Topics:", ln=True)
-        pdf.multi_cell(0,8,", ".join(set(weak_topics)))
-        pdf.ln(3)
-    tmp_img = tempfile.NamedTemporaryFile(delete=False,suffix=".png")
-    fig_pie.write_image(tmp_img.name)
-    pdf.image(tmp_img.name, w=120)
-    tmp_img.close()
-    tmp_pdf = tempfile.NamedTemporaryFile(delete=False,suffix=".pdf")
-    pdf.output(tmp_pdf.name)
-    return tmp_pdf.name
-
-# -------------------- BADGES --------------------
-def display_badges(user_id, score):
-    st.markdown("### 🏅 Earned Badges")
-    badges = []
-    results_len = len(get_quiz_results(user_id))
-    if results_len == 1: badges.append("🎯 First Quiz Completed")
-    if score/len(st.session_state.quiz_data) >= 0.8: badges.append("🌟 High Scorer")
-    if results_len >= 5: badges.append("🔥 Consistent Learner")
-    if badges:
-        for b in badges: st.success(b)
-    else:
-        st.info("No new badges yet. Keep interacting!")
