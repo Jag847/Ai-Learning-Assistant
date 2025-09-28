@@ -16,7 +16,12 @@ def main():
     if st.sidebar.button("🔓 Logout"):
         st.session_state.clear()
         st.rerun()
-
+    query_params = st.query_params
+    if "page" in query_params:
+        page = query_params["page"][0]
+        if page == "main_app":
+            run_ai_learning_assistant(username)
+            return
     # Navigation logic
     if "page" not in st.session_state:
         st.session_state["page"] = "welcome"
