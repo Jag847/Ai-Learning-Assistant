@@ -4,5 +4,6 @@ pandas==2.2.3
 reportlab==4.2.5
 Pillow==10.4.0
 pydub==0.25.1
+plotly>=5.16.0
 SpeechRecognition==3.10.4
 pyttsx3==2.91
