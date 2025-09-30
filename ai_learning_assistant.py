@@ -1,7 +1,13 @@
 import streamlit as st
 import os
 from ai_modules import (
-    run_ai_study_buddy, run_voice_to_notes, show_dashboard, load_progress, save_progress
+    run_ai_study_buddy,
+    run_voice_to_notes,
+    show_dashboard,
+    load_progress,
+    save_progress,
+    assign_badges,
+    display_badges
 )
 
 st.set_page_config(page_title="AI Learning Assistant", page_icon="🤖", layout="wide")
