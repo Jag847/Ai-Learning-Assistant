@@ -1,4 +1,7 @@
 import streamlit as st
+
+
+st.set_page_config(page_title="AI Learning Assistant", page_icon="🤖", layout="wide")
 import pandas as pd
 import plotly.express as px
 from auth import load_auth
@@ -6,7 +9,7 @@ from welcome import show_welcome_page
 from ai_modules import run_ai_learning_assistant, run_quiz, inject_css, get_quiz_results, update_quiz_stats
 
 # ----------------------------- MAIN CONFIG -----------------------------
-st.set_page_config(page_title="AI Learning Assistant", page_icon="🤖", layout="wide")
+
 
 def main():
     # -------------------- CSS --------------------
