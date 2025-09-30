@@ -3,9 +3,9 @@ import tempfile
 import os
 from datetime import date
 from ai_modules import (
-    gemini_api, load_progress, save_progress, show_dashboard,
-    run_ai_study_buddy, run_voice_to_notes
+    run_ai_study_buddy, run_voice_to_notes, show_dashboard
 )
+
 
 # -------------------- CONFIG --------------------
 st.set_page_config(page_title="AI Learning Assistant", page_icon="🤖", layout="wide")
@@ -54,10 +54,9 @@ elif page == "Progress Dashboard":
 
 elif page == "Settings / Logout":
     st.header("⚙️ Settings")
+    from ai_modules import reset_progress
     if st.button("🔄 Reset Progress Data"):
-        if os.path.exists("user_progress.json"):
-            os.remove("user_progress.json")
+        reset_progress()
         st.success("Progress data reset successfully!")
-
     if st.button("🔒 Logout"):
         st.success("You have been logged out successfully.")
