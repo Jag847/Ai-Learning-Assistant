@@ -1,55 +1,50 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-
 from auth import load_auth
 from welcome import show_welcome_page
-from ai_modules import (
-    run_ai_learning_assistant,
-    run_quiz,
-    inject_css,
-    get_quiz_results,
-    update_quiz_stats,
-)
+from ai_modules import run_ai_learning_assistant, run_quiz, inject_css, get_quiz_results, update_quiz_stats
 
-# ----------------------------- MAIN FUNCTION -----------------------------
-# Must be the first Streamlit command
+# ----------------------------- MAIN CONFIG -----------------------------
 st.set_page_config(page_title="AI Learning Assistant", page_icon="🤖", layout="wide")
 
 def main():
     # -------------------- CSS --------------------
-    inject_css()  # inject modern styles
+    inject_css()
 
     # -------------------- AUTHENTICATION --------------------
     authenticator = load_auth()
-    login_result = authenticator.login() if callable(authenticator.login) else (authenticator, True, str(authenticator))
-    
-    if isinstance(login_result, tuple) and len(login_result) == 3:
-        user, logged_in, username = login_result
+    if callable(getattr(authenticator, "login", None)):
+        user, logged_in, username = authenticator.login()
     else:
-        user, logged_in, username = {}, True, str(login_result)
+        user, logged_in, username = {}, True, str(authenticator)
 
     if not logged_in:
         st.stop()
-
-    # -------------------- SAFE USER HANDLING --------------------
-    if isinstance(user, dict):
-        safe_user = user.copy()
-        safe_user.setdefault("id", 0)
-        safe_user.setdefault("username", username)
-    else:
-        safe_user = {"id": 0, "username": str(user)}
-
-    st.sidebar.success(f"👤 Logged in as {safe_user['username']}")
-    if st.sidebar.button("🔓 Logout"):
-        st.session_state.clear()
-        st.experimental_rerun()
 
     # -------------------- SESSION STATE --------------------
     if "page" not in st.session_state:
         st.session_state.page = "welcome"
     if "transition" not in st.session_state:
         st.session_state.transition = "fade"
+    if "quiz_data" not in st.session_state:
+        st.session_state.quiz_data = []
+    if "quiz_answers" not in st.session_state:
+        st.session_state.quiz_answers = {}
+
+    # -------------------- SAFE USER --------------------
+    safe_user = {}
+    if isinstance(user, dict):
+        safe_user["id"] = user.get("id", 0)
+        safe_user["username"] = user.get("username", "User")
+    else:
+        safe_user["id"] = 0
+        safe_user["username"] = username
+
+    st.sidebar.success(f"👤 Logged in as {safe_user['username']}")
+    if st.sidebar.button("🔓 Logout"):
+        st.session_state.clear()
+        st.experimental_rerun()
 
     # -------------------- PAGE TRANSITIONS --------------------
     transition_css = f"""
