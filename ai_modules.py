@@ -121,3 +121,85 @@ def run_ai_study_buddy(username):
             assign_badges(progress, score)
             save_progress(username, progress)
             display_badges(progress)
+def run_voice_to_notes(username):
+    progress = load_progress(username)
+    st.header("🎙️ Voice to Notes")
+
+    # -------------------- AUDIO UPLOAD --------------------
+    uploaded_file = st.file_uploader("Upload lecture audio (MP3/WAV/M4A)", type=["mp3","wav","m4a"])
+    transcription = ""
+    
+    if uploaded_file:
+        with tempfile.NamedTemporaryFile(delete=False) as temp:
+            temp.write(uploaded_file.read())
+            temp_path = temp.name
+        
+        st.info("Transcribing audio... please wait")
+        transcription = gemini_api(f"Transcribe this audio into concise study notes: {temp_path}")
+        st.success("Transcription complete!")
+        st.text_area("Transcript:", transcription, height=150)
+        os.remove(temp_path)
+
+    # -------------------- LIVE MICROPHONE --------------------
+    if st.checkbox("Use Microphone (Local only)"):
+        try:
+            import speech_recognition as sr
+            r = sr.Recognizer()
+            with sr.Microphone() as source:
+                st.info("Listening... Speak now.")
+                audio_data = r.listen(source, timeout=10)
+                transcription = r.recognize_google(audio_data)
+                st.success("Live transcription complete!")
+                st.text_area("Live Transcript:", transcription, height=150)
+        except Exception as e:
+            st.error(f"Microphone input not available: {e}")
+
+    # -------------------- QUIZ FROM TRANSCRIPT --------------------
+    if transcription:
+        if st.button("Generate Quiz from Transcript"):
+            quiz_text = gemini_api(
+                f"Generate 5 multiple-choice questions from this text:\n{transcription}\n"
+                "Return in JSON format without answers, include 'question' and 'options'."
+            )
+            try:
+                st.session_state.voice_quiz = json.loads(quiz_text)
+                st.session_state.user_answers = {}
+                st.success("Quiz generated! Enter your answers below.")
+            except:
+                st.error("Failed to generate quiz. Please try again.")
+
+    # -------------------- DISPLAY QUIZ --------------------
+    if "voice_quiz" in st.session_state:
+        st.subheader("📝 Voice-to-Notes Quiz")
+        for i, q in enumerate(st.session_state.voice_quiz):
+            st.markdown(f"**Q{i+1}: {q['question']}**")
+            ans = st.text_input(f"Your answer for Q{i+1}:", key=f"v_ans{i}")
+            st.session_state.user_answers[i] = ans
+
+        if st.button("Submit Voice Quiz Answers"):
+            correct = 0
+            weak_topics = []
+            for i, q in enumerate(st.session_state.voice_quiz):
+                user_ans = st.session_state.user_answers.get(i, "")
+                check_prompt = f"Is the following answer correct for the question?\nQuestion: {q['question']}\nOptions: {q['options']}\nAnswer: {user_ans}\nRespond with 'correct' or 'wrong' and specify topic if wrong."
+                result = gemini_api(check_prompt).lower()
+                if "correct" in result:
+                    correct += 1
+                else:
+                    weak_topics.append(q.get("topic", "General"))
+
+            wrong = len(st.session_state.voice_quiz) - correct
+            st.success(f"✅ Correct: {correct}, ❌ Wrong: {wrong}")
+            if weak_topics:
+                st.info(f"Focus on improving: {', '.join(set(weak_topics))}")
+                tips = gemini_api(f"Provide improvement tips for: {', '.join(set(weak_topics))}")
+                st.write(tips)
+
+            # Save progress
+            score = int((correct / len(st.session_state.voice_quiz)) * 100)
+            progress["history"].append({"date": str(date.today()), "score": score})
+            progress["summary"]["correct"] += correct
+            progress["summary"]["wrong"] += wrong
+            assign_badges(progress, score)
+            save_progress(username, progress)
+            display_badges(progress)
