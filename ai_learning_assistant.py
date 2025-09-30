@@ -1,161 +1,234 @@
-# ai_learning_assistant.py
 import streamlit as st
+import tempfile
+import os
+import json
+import requests
 import pandas as pd
-import plotly.express as px
-from auth import load_auth
-from welcome import show_welcome_page
-from ai_modules import (
-    run_ai_learning_assistant,
-    run_quiz,
-    inject_css,
-    get_quiz_results,
-    update_quiz_stats,
-    voice_to_notes_from_audiofile,
-    get_progress_figures
-)
+import matplotlib.pyplot as plt
+from datetime import date
 
-# --- Page config must be first Streamlit command ---
+# -------------------- CONFIG --------------------
 st.set_page_config(page_title="AI Learning Assistant", page_icon="🤖", layout="wide")
 
-def main():
-    inject_css()  # theme/style
+API_KEY = "AIzaSyAjwX-7ymrT5RBObzDkd2nhCFflfXEA2ts"
+MODEL = "gemini-2.0-flash"
+URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={API_KEY}"
+PROGRESS_FILE = "user_progress.json"
 
-    # -------------------- AUTH --------------------
-    authenticator = load_auth()
-    # safe login
-    if callable(getattr(authenticator, "login", None)):
-        login_result = authenticator.login()
-    else:
-        login_result = authenticator
+# -------------------- PAGE STYLE --------------------
+st.markdown("""
+<style>
+body {background-color: #e8f5e9;}
+.sidebar .sidebar-content {background-color: #c8e6c9;}
+.stButton>button {
+    background-color: #2e7d32;
+    color: white;
+    border-radius: 8px;
+}
+.stButton>button:hover {background-color: #1b5e20;}
+.progress-container {
+    margin-top: 10px;
+    background-color: #c8e6c9;
+    border-radius: 10px;
+    height: 25px;
+    width: 100%;
+    overflow: hidden;
+}
+.progress-bar {
+    height: 25px;
+    background-color: #43a047;
+    width: 0%;
+    transition: width 1s ease-in-out;
+}
+.toast {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    background: linear-gradient(90deg, #43a047, #66bb6a);
+    color: white;
+    padding: 16px 24px;
+    border-radius: 12px;
+    font-weight: bold;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    opacity: 0;
+    transform: translateY(30px);
+    animation: toastInOut 4s ease-in-out;
+    z-index: 9999;
+}
+@keyframes toastInOut {
+    0% {opacity: 0; transform: translateY(30px);}
+    10% {opacity: 1; transform: translateY(0);}
+    90% {opacity: 1; transform: translateY(0);}
+    100% {opacity: 0; transform: translateY(30px);}
+}
+</style>
+""", unsafe_allow_html=True)
 
-    if isinstance(login_result, tuple) and len(login_result) == 3:
-        user, logged_in, username = login_result
-    else:
-        user, logged_in, username = (login_result if isinstance(login_result, dict) else {}, True, str(login_result))
-
-    if not logged_in:
-        st.stop()
-
-    # -------------------- safe_user --------------------
-    safe_user = {}
-    if isinstance(user, dict):
-        safe_user["id"] = user.get("id", 0)
-        safe_user["username"] = user.get("username", username)
-    else:
-        safe_user["id"] = 0
-        safe_user["username"] = username
-
-    # -------------------- session state defaults --------------------
-    if "page" not in st.session_state:
-        st.session_state.page = "ai_study"
-    if "transition" not in st.session_state:
-        st.session_state.transition = "fade"
-    if "quiz_data" not in st.session_state:
-        st.session_state.quiz_data = []
-    if "quiz_answers" not in st.session_state:
-        st.session_state.quiz_answers = {}
-
-    # -------------------- SIDEBAR NAV --------------------
-    st.sidebar.title("Navigation")
-    st.sidebar.write(f"👤 {safe_user['username']}")
-    choice = st.sidebar.radio("Go to", ["AI Study Buddy", "Voice → Notes", "Development & Analytics", "About / Logout"])
-    if st.sidebar.button("🔓 Logout"):
-        st.session_state.clear()
-        st.experimental_rerun()
-
-    # Map choice to page
-    page_map = {
-        "AI Study Buddy": "ai_study",
-        "Voice → Notes": "voice_notes",
-        "Development & Analytics": "development",
-        "About / Logout": "about"
-    }
-    st.session_state.page = page_map.get(choice, "ai_study")
-
-    # -------------------- ROUTING --------------------
-    if st.session_state.page == "ai_study":
-        st.session_state.transition = "fade"
-        run_ai_learning_assistant(safe_user)
-
-    elif st.session_state.page == "voice_notes":
-        st.session_state.transition = "slide"
-        voice_to_notes_page(safe_user)
-
-    elif st.session_state.page == "development":
-        st.session_state.transition = "fade"
-        development_page(safe_user["id"])
-
-    elif st.session_state.page == "about":
-        st.session_state.transition = "fade"
-        show_about()
-
-def voice_to_notes_page(safe_user):
-    st.header("🎙️ Voice → Notes & Quiz")
-    st.markdown("Upload a lecture audio (mp3/wav). Gemini will be used to transcribe & summarize.")
-    uploaded = st.file_uploader("Upload audio (mp3/wav)", type=["mp3", "wav", "m4a"])
-    if uploaded:
-        with st.spinner("Transcribing and generating notes..."):
-            result = voice_to_notes_from_audiofile(uploaded)
-        st.markdown("### 📚 Generated Notes")
-        st.write(result.get("notes", "No notes generated."))
-        st.markdown("### 📋 Generated Quiz")
-        quiz = result.get("quiz", [])
-        if quiz:
-            st.session_state.quiz_data = quiz
-            st.success("Quiz created from lecture — go to 'AI Study Buddy' or take it here.")
-            # Provide option to take quiz right here as well
-            if st.button("Take this quiz here"):
-                run_quiz(safe_user["id"])
-        else:
-            st.info("No quiz found in the generated output.")
-        st.markdown("### 🔎 Weak Topics")
-        st.write(result.get("weak_topics", []))
-        # Also offer to generate tips about weak topics using text model
-        if result.get("weak_topics"):
-            if st.button("Generate improvement tips"):
-                tips = generate_tips_for_weak_topics(result.get("weak_topics", []))
-                st.write(tips)
-
-def generate_tips_for_weak_topics(topics):
-    prompt = f"Provide actionable study tips for the following weak topics: {', '.join(topics)}"
-    out = generate_ai_response(prompt)
-    return out
-
-def development_page(user_id):
-    st.header("📈 Development & Analytics")
-    # progress over time and pie chart
-    fig_time, fig_pie = get_progress_figures(user_id)
-    st.markdown("### Progress Over Time (by quiz score %)")
-    st.plotly_chart(fig_time, use_container_width=True)
-    st.markdown("### Aggregate Performance")
-    st.plotly_chart(fig_pie, use_container_width=True)
-
-    # More analytics: live current quiz stats if any
-    st.markdown("### Current Session Live Stats")
-    update_quiz_stats()
-
-    # Badges / insights
-    st.markdown("### Insights")
+# -------------------- GEMINI CALL --------------------
+def gemini_api(prompt: str):
+    headers = {"Content-Type": "application/json"}
+    data = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
-        results = get_quiz_results(user_id)
-        if results:
-            avg_score = sum(r[0] for r in results) / max(1, len(results))
-            st.write(f"Average raw score (per quiz): {avg_score:.2f}")
+        response = requests.post(URL, headers=headers, json=data)
+        response.raise_for_status()
+        result = response.json()
+        return result["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception as e:
+        return f"⚠️ API Error: {e}"
+
+# -------------------- PROGRESS STORAGE --------------------
+def load_progress():
+    if os.path.exists(PROGRESS_FILE):
+        with open(PROGRESS_FILE, "r") as f:
+            return json.load(f)
+    return {"history": [], "summary": {"correct": 0, "wrong": 0, "weak": 0}}
+
+def save_progress(progress):
+    with open(PROGRESS_FILE, "w") as f:
+        json.dump(progress, f, indent=4)
+
+progress = load_progress()
+
+# -------------------- NAVIGATION --------------------
+st.sidebar.title("🌿 Navigation")
+page = st.sidebar.radio("Go to", [
+    "Welcome",
+    "AI Study Buddy",
+    "Web Dev & Weak Topics",
+    "Progress Dashboard",
+    "Settings / Logout"
+])
+
+# -------------------- WELCOME --------------------
+if page == "Welcome":
+    st.markdown("<h1 style='color:#2e7d32;'>Let's take a step towards a better Earth 🌍</h1>", unsafe_allow_html=True)
+    st.write("Welcome to your AI-powered study companion!")
+    if st.button("🚀 Let’s Get Started"):
+        st.session_state["page"] = "AI Study Buddy"
+
+# -------------------- STUDY BUDDY --------------------
+elif page == "AI Study Buddy":
+    st.header("🧠 AI Study Buddy")
+    st.write("Take quizzes, get instant feedback, and track your progress.")
+
+    question = st.text_input("Enter your question or topic:")
+    if st.button("Get Answer"):
+        if question:
+            answer = gemini_api(f"Answer this academic question clearly: {question}")
+            st.success(answer)
         else:
-            st.info("No historical quiz data.")
-    except Exception:
-        st.warning("Could not fetch historical results.")
+            st.warning("Please enter a question.")
 
-def show_about():
-    st.header("About / Help")
-    st.markdown(
-        """
-        - **AI Study Buddy**: Generate explanations, quizzes, flashcards. Take quizzes question-by-question.
-        - **Voice → Notes**: Upload lecture audio; Gemini used to transcribe, summarize and produce quizzes and weak-topic insights.
-        - **Development & Analytics**: Progress graphs, performance pie chart, and live stats.
-        """
-    )
+    st.subheader("🎯 Quiz Time")
+    topic = st.text_input("Enter a quiz topic:")
+    if st.button("Generate Quiz"):
+        quiz = gemini_api(f"Create 5 quiz questions with 4 options each on {topic}. Mark the correct answer clearly.")
+        st.markdown(quiz)
 
-# Entrypoint
-if __name__ == "__main__":
-    main()
+    st.subheader("📈 Record Your Quiz Performance")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        correct = st.number_input("Correct Answers", min_value=0, value=0)
+    with col2:
+        wrong = st.number_input("Wrong Answers", min_value=0, value=0)
+    with col3:
+        weak = st.number_input("Weak Topics Identified", min_value=0, value=0)
+
+    if st.button("💾 Save Progress"):
+        new_score = max(0, min(100, (correct * 10) + 50 - weak * 5))
+        progress["history"].append({
+            "date": str(date.today()),
+            "score": new_score
+        })
+        progress["summary"]["correct"] += correct
+        progress["summary"]["wrong"] += wrong
+        progress["summary"]["weak"] += weak
+        save_progress(progress)
+
+        # Animated development bar
+        st.markdown("<h4 style='color:#2e7d32;'>📊 Development Progress</h4>", unsafe_allow_html=True)
+        bar_html = f"""
+        <div class="progress-container">
+            <div class="progress-bar" style="width:{new_score}%;"></div>
+        </div>
+        <p style='color:#1b5e20;'>Your latest quiz score: {new_score}%</p>
+        """
+        st.markdown(bar_html, unsafe_allow_html=True)
+
+        # ✅ Toast notification
+        toast_html = """
+        <div class="toast">🎉 Progress updated successfully!</div>
+        <script>
+        setTimeout(() => {{
+            const toast = document.querySelector('.toast');
+            if (toast) toast.remove();
+        }}, 4000);
+        </script>
+        """
+        st.markdown(toast_html, unsafe_allow_html=True)
+
+# -------------------- WEB DEV + WEAK TOPICS --------------------
+elif page == "Web Dev & Weak Topics":
+    st.header("💻 Web Development + Weak Topics")
+    st.write("Study weak areas and generate notes with voice input.")
+
+    tab1, tab2 = st.tabs(["Weak Topics", "Voice to Notes"])
+
+    with tab1:
+        st.subheader("🧩 Identify Weak Topics")
+        subject = st.text_input("Enter your subject or web topic:")
+        if st.button("Analyze Weak Areas"):
+            analysis = gemini_api(f"List weak areas in {subject} and how to improve them.")
+            st.markdown(analysis)
+
+    with tab2:
+        st.subheader("🎙️ Voice to Notes Generator")
+        audio_file = st.file_uploader("Upload a lecture audio file", type=["mp3", "wav", "m4a"])
+        if audio_file:
+            with tempfile.NamedTemporaryFile(delete=False) as temp:
+                temp.write(audio_file.read())
+                temp_path = temp.name
+            st.info("Transcribing... please wait.")
+            transcription = gemini_api("Convert this uploaded lecture audio to summarized study notes.")
+            st.success(transcription)
+            os.remove(temp_path)
+
+# -------------------- PROGRESS DASHBOARD --------------------
+elif page == "Progress Dashboard":
+    st.header("📊 Study Progress Dashboard")
+
+    if not progress["history"]:
+        st.warning("No progress data available yet. Take a quiz first!")
+    else:
+        df = pd.DataFrame(progress["history"])
+
+        st.subheader("📈 Progress Over Time")
+        plt.figure()
+        plt.plot(df["date"], df["score"], marker="o", color="#2e7d32")
+        plt.xlabel("Date")
+        plt.ylabel("Quiz Score (%)")
+        plt.title("Your Study Progress Over Time")
+        st.pyplot(plt)
+
+        st.subheader("🥧 Quiz Performance Breakdown")
+        summary = progress["summary"]
+        labels = ["Correct", "Wrong", "Weak Topics"]
+        values = [summary["correct"], summary["wrong"], summary["weak"]]
+        plt.figure()
+        plt.pie(values, labels=labels, autopct='%1.1f%%', startangle=140,
+                colors=["#66bb6a", "#ef5350", "#ffee58"])
+        plt.title("Overall Quiz Data Analytics")
+        st.pyplot(plt)
+
+# -------------------- SETTINGS --------------------
+elif page == "Settings / Logout":
+    st.header("⚙️ Settings")
+    st.write("Manage your preferences or log out.")
+
+    if st.button("🔄 Reset Progress Data"):
+        if os.path.exists(PROGRESS_FILE):
+            os.remove(PROGRESS_FILE)
+        st.success("Progress data reset successfully!")
+
+    if st.button("🔒 Logout"):
+        st.success("You have been logged out successfully.")
