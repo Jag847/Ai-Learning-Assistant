@@ -59,6 +59,8 @@ def display_badges(progress):
 # -------------------- AI STUDY BUDDY --------------------
 def run_ai_study_buddy():
     st.header("🧠 AI Study Buddy")
+
+    # -------------------- ASK QUESTION --------------------
     question = st.text_input("Ask a question or topic:")
     if st.button("Get Answer"):
         if question:
@@ -67,108 +69,171 @@ def run_ai_study_buddy():
         else:
             st.warning("Enter a question!")
 
+    # -------------------- QUIZ GENERATION --------------------
     st.subheader("🎯 Quiz Time")
-    topic = st.text_input("Enter quiz topic:")
+    topic = st.text_input("Enter quiz topic for AI-generated quiz:")
     if st.button("Generate Quiz"):
-        quiz_text = gemini_api(f"Generate 5 multiple-choice questions on {topic} without answers, in JSON format with fields question/options/topic")
+        raw_quiz = gemini_api(
+            f"Generate 5 multiple-choice questions on '{topic}'. "
+            "Return only JSON array with 5 objects. Each object must have: "
+            "'question' (string), 'options' (array of 4 strings), 'topic' (string). "
+            "Do NOT include answers or explanations."
+        )
         try:
-            st.session_state.quiz_data = json.loads(quiz_text)
+            st.session_state.quiz_data = json.loads(raw_quiz)
             st.session_state.quiz_answers = {}
-        except:
-            st.error("Failed to generate quiz. Try another topic.")
+            st.success("Quiz generated successfully! Fill your answers below.")
+        except json.JSONDecodeError:
+            st.error("Failed to generate quiz. Please try another topic.")
+            st.text_area("API Output (Debug)", raw_quiz, height=200)
 
+    # -------------------- QUIZ ANSWER INPUT --------------------
     quiz_data = st.session_state.get("quiz_data", [])
     if quiz_data:
-        st.subheader("📝 Take the Quiz")
+        st.subheader("📝 Submit Your Answers")
         for i, q in enumerate(quiz_data):
             st.markdown(f"**Q{i+1}: {q.get('question','')}**")
-            options = q.get("options", [])
-            user_choice = st.radio(f"Select for Q{i+1}", options, key=f"q{i}")
-            st.session_state.quiz_answers[i] = user_choice
+            user_ans = st.text_input(f"Your answer for Q{i+1} (A/B/C/D):", key=f"user_ans_{i}")
+            st.session_state.quiz_answers[i] = user_ans.strip().upper()
 
         if st.button("Submit Answers"):
-            score = 0
-            weak_topics = []
-            for i, q in enumerate(quiz_data):
-                user_ans = st.session_state.quiz_answers.get(i,"")
-                # Get correct answer from Gemini API
-                correct_ans = gemini_api(f"Provide the correct answer for this question: {q.get('question','')} with topic {q.get('topic','')}")
-                if user_ans.lower() == correct_ans.lower():
-                    score += 1
-                else:
-                    weak_topics.append(q.get("topic","General"))
+            if not st.session_state.quiz_answers:
+                st.warning("Please answer all questions before submitting.")
+            else:
+                # Get correct answers from Gemini API
+                answer_prompt = "Provide only JSON array of correct answers in order (A/B/C/D) for these questions:\n"
+                answer_prompt += json.dumps(quiz_data)
+                correct_ans_raw = gemini_api(answer_prompt)
+                try:
+                    correct_answers = json.loads(correct_ans_raw)
+                except:
+                    st.error("Failed to fetch correct answers. Try submitting again.")
+                    st.text_area("API Output (Debug)", correct_ans_raw, height=200)
+                    return
 
-            st.success(f"✅ Score: {score}/{len(quiz_data)}")
-            if weak_topics:
-                st.info(f"Focus on weak topics: {', '.join(set(weak_topics))}")
-                tips = gemini_api(f"Provide improvement tips for: {', '.join(set(weak_topics))}")
-                st.write(tips)
+                # Calculate score and weak topics
+                score = 0
+                weak_topics = []
+                for i, q in enumerate(quiz_data):
+                    user_ans = st.session_state.quiz_answers.get(i,"")
+                    correct_ans = correct_answers[i].upper()
+                    if user_ans == correct_ans:
+                        score += 1
+                    else:
+                        weak_topics.append(q.get("topic","General"))
 
-            progress = load_progress()
-            new_score = int((score/len(quiz_data))*100)
-            progress["history"].append({"date": str(date.today()),"score": new_score})
-            progress["summary"]["correct"] += score
-            progress["summary"]["wrong"] += (len(quiz_data)-score)
-            assign_badges(progress,new_score)
-            save_progress(progress)
-            display_badges(progress)
+                # Show result
+                st.success(f"✅ Score: {score}/{len(quiz_data)}")
+                if weak_topics:
+                    st.info(f"Weak Topics: {', '.join(set(weak_topics))}")
+                    tips = gemini_api(f"Provide tips to improve in: {', '.join(set(weak_topics))}")
+                    st.write(tips)
 
+                # Update progress and badges
+                progress = load_progress()
+                progress["history"].append({"date": str(date.today()), "score": int(score/len(quiz_data)*100)})
+                progress["summary"]["correct"] += score
+                progress["summary"]["wrong"] += len(quiz_data)-score
+                progress["summary"]["weak"] += len(set(weak_topics))
+                assign_badges(progress, int(score/len(quiz_data)*100))
+                save_progress(progress)
+                display_badges(progress)
 # -------------------- VOICE TO NOTES --------------------
 def run_voice_to_notes():
     st.header("🎙️ Voice to Notes")
-    audio_file = st.file_uploader("Upload lecture audio", type=["mp3","wav","m4a"])
+
     transcription = ""
+    audio_file = st.file_uploader("Upload lecture audio (MP3/WAV/M4A):", type=["mp3","wav","m4a"])
+
+    # -------------------- AUDIO UPLOAD --------------------
     if audio_file:
         with tempfile.NamedTemporaryFile(delete=False) as temp:
             temp.write(audio_file.read())
             temp_path = temp.name
         st.info("Transcribing audio... please wait")
-        transcription = gemini_api(f"Transcribe and summarize this audio into study notes.")
-        st.success("Transcription complete")
+        transcription = gemini_api(f"Transcribe this uploaded lecture audio into concise study notes.")
+        st.success("Transcription complete:")
         st.text_area("Transcript", transcription, height=150)
         os.remove(temp_path)
 
-    if transcription:
-        if st.button("Generate Quiz from Notes"):
-            quiz_text = gemini_api(f"Generate 5 multiple-choice questions from this transcript without answers, in JSON format with fields question/options/topic:\n{transcription}")
-            try:
-                st.session_state.voice_quiz = json.loads(quiz_text)
-                st.session_state.quiz_answers = {}
-            except:
-                st.error("Failed to generate quiz.")
+    # -------------------- LIVE SPEECH (if local) --------------------
+    if st.checkbox("Use Microphone for Live Notes (Local Only)"):
+        try:
+            import speech_recognition as sr
+            r = sr.Recognizer()
+            with sr.Microphone() as source:
+                st.info("Listening... speak now.")
+                audio_data = r.listen(source)
+                transcription = r.recognize_google(audio_data)
+                st.text_area("Live Transcript", transcription, height=150)
+        except Exception as e:
+            st.error(f"Live microphone input not available: {e}")
 
-        voice_quiz = st.session_state.get("voice_quiz", [])
-        if voice_quiz:
-            st.subheader("📝 Take Quiz from Notes")
-            for i, q in enumerate(voice_quiz):
-                st.markdown(f"**Q{i+1}: {q.get('question','')}**")
-                options = q.get("options", [])
-                user_choice = st.radio(f"Select for Q{i+1}", options, key=f"v_q{i}")
-                st.session_state.quiz_answers[i] = user_choice
+    # -------------------- GENERATE QUIZ FROM TRANSCRIPT --------------------
+    if transcription and st.button("Generate Quiz from Transcript"):
+        raw_quiz = gemini_api(
+            f"Generate 5 multiple-choice questions from this transcript:\n{transcription}\n"
+            "Return only JSON array with 5 objects. Each object must have: "
+            "'question' (string), 'options' (array of 4 strings), 'topic' (string). "
+            "Do NOT include answers or explanations."
+        )
+        try:
+            st.session_state.voice_quiz = json.loads(raw_quiz)
+            st.session_state.quiz_answers = {}
+            st.success("Quiz generated! Fill your answers below.")
+        except:
+            st.error("Failed to generate quiz. Try another transcript or topic.")
+            st.text_area("API Output (Debug)", raw_quiz, height=200)
 
-            if st.button("Submit Voice Quiz Answers"):
+    # -------------------- QUIZ ANSWER INPUT --------------------
+    voice_quiz = st.session_state.get("voice_quiz", [])
+    if voice_quiz:
+        st.subheader("📝 Submit Your Answers")
+        for i, q in enumerate(voice_quiz):
+            st.markdown(f"**Q{i+1}: {q.get('question','')}**")
+            user_ans = st.text_input(f"Your answer for Q{i+1} (A/B/C/D):", key=f"v_user_ans_{i}")
+            st.session_state.quiz_answers[i] = user_ans.strip().upper()
+
+        if st.button("Submit Voice Quiz Answers"):
+            if not st.session_state.quiz_answers:
+                st.warning("Please answer all questions before submitting.")
+            else:
+                # Get correct answers from Gemini API
+                answer_prompt = "Provide only JSON array of correct answers in order (A/B/C/D) for these questions:\n"
+                answer_prompt += json.dumps(voice_quiz)
+                correct_ans_raw = gemini_api(answer_prompt)
+                try:
+                    correct_answers = json.loads(correct_ans_raw)
+                except:
+                    st.error("Failed to fetch correct answers. Try submitting again.")
+                    st.text_area("API Output (Debug)", correct_ans_raw, height=200)
+                    return
+
+                # Calculate score and weak topics
                 score = 0
                 weak_topics = []
                 for i, q in enumerate(voice_quiz):
                     user_ans = st.session_state.quiz_answers.get(i,"")
-                    correct_ans = gemini_api(f"Provide the correct answer for this question: {q.get('question','')} with topic {q.get('topic','')}")
-                    if user_ans.lower() == correct_ans.lower():
+                    correct_ans = correct_answers[i].upper()
+                    if user_ans == correct_ans:
                         score += 1
                     else:
                         weak_topics.append(q.get("topic","General"))
 
+                # Show results
                 st.success(f"✅ Score: {score}/{len(voice_quiz)}")
                 if weak_topics:
-                    st.info(f"Focus on weak topics: {', '.join(set(weak_topics))}")
-                    tips = gemini_api(f"Provide improvement tips for: {', '.join(set(weak_topics))}")
+                    st.info(f"Weak Topics: {', '.join(set(weak_topics))}")
+                    tips = gemini_api(f"Provide tips to improve in: {', '.join(set(weak_topics))}")
                     st.write(tips)
 
+                # Update progress and badges
                 progress = load_progress()
-                new_score = int((score/len(voice_quiz))*100)
-                progress["history"].append({"date": str(date.today()),"score": new_score})
+                progress["history"].append({"date": str(date.today()), "score": int(score/len(voice_quiz)*100)})
                 progress["summary"]["correct"] += score
-                progress["summary"]["wrong"] += (len(voice_quiz)-score)
-                assign_badges(progress,new_score)
+                progress["summary"]["wrong"] += len(voice_quiz)-score
+                progress["summary"]["weak"] += len(set(weak_topics))
+                assign_badges(progress, int(score/len(voice_quiz)*100))
                 save_progress(progress)
                 display_badges(progress)
 
