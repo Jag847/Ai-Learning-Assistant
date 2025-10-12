@@ -31,14 +31,20 @@ def gemini_api(prompt: str):
 def load_progress(username):
     file = get_progress_file(username)
     if os.path.exists(file):
-        with open(file,"r") as f:
+        with open(file, "r") as f:
             return json.load(f)
-    return {"history": [], "summary":{"correct":0,"wrong":0}, "badges":[]}
+    return {
+        "history": [],
+        "summary": {"correct": 0, "wrong": 0},
+        "badges": [],
+        "chat_history": [],
+        "flashcards": []
+    }
 
 def save_progress(username, progress):
     file = get_progress_file(username)
-    with open(file,"w") as f:
-        json.dump(progress,f,indent=4)
+    with open(file, "w") as f:
+        json.dump(progress, f, indent=4)
 
 # -------------------- BADGES --------------------
 def assign_badges(progress, score):
@@ -49,6 +55,8 @@ def assign_badges(progress, score):
         badges.append("🔥 Consistent Learner")
     if len(progress.get("history", [])) == 1 and "🎯 First Quiz Completed" not in badges:
         badges.append("🎯 First Quiz Completed")
+    if len(progress.get("flashcards", [])) >= 3 and "📚 Flashcard Master" not in badges:
+        badges.append("📚 Flashcard Master")
     progress["badges"] = badges
 
 def display_badges(progress):
@@ -65,11 +73,20 @@ def run_ai_study_buddy(username):
     st.header("🧠 AI Study Buddy")
     
     # ---------- Q&A ----------
+    st.subheader("❓ Ask a Question")
     question = st.text_input("Ask a question or topic:")
     if st.button("Get Answer"):
         if question:
-            answer = gemini_api(f"Answer this academic question clearly: {question}")
+            answer = gemini_api(f"Answer this academic question clearly in simple terms: {question}")
             st.success(answer)
+            # Save to chat history
+            progress["chat_history"].append({
+                "type": "Question",
+                "content": question,
+                "answer": answer,
+                "timestamp": str(date.today())
+            })
+            save_progress(username, progress)
         else:
             st.warning("Enter a question!")
 
@@ -77,47 +94,116 @@ def run_ai_study_buddy(username):
     st.subheader("🎯 Quiz Time")
     topic = st.text_input("Enter quiz topic:")
     if st.button("Generate Quiz"):
-        quiz_text = gemini_api(f"Generate 5 multiple-choice questions on '{topic}' without answers in JSON format, include 'question' and 'options' fields")
+        quiz_text = gemini_api(f"Generate 5 multiple-choice questions on '{topic}' in JSON format as a list of objects, each with 'question' (string), 'options' (list of 4 strings), 'correct' (integer index 0-3 for the correct option)")
         try:
             st.session_state.quiz_data = json.loads(quiz_text)
-            st.success("Quiz generated! Enter your answers below.")
+            st.success("Quiz generated! Select your answers below.")
             st.session_state.user_answers = {}
+            st.session_state.quiz_submitted = False
         except:
             st.error("Failed to generate quiz. Try another topic.")
 
-    # Display quiz questions and input answers
-    if "quiz_data" in st.session_state:
+    # Display quiz questions with radio buttons
+    if "quiz_data" in st.session_state and not st.session_state.get("quiz_submitted", False):
         st.subheader("📝 Answer the Quiz")
         for i, q in enumerate(st.session_state.quiz_data):
+            options = q['options']
+            labels = ['A', 'B', 'C', 'D']
+            labeled_options = [f"{labels[j]}. {options[j]}" for j in range(4)]
+            selected = st.radio(f"Q{i+1}: {q['question']}", labeled_options, key=f"radio_{i}")
+            # Store the index of selected option
+            if selected:
+                selected_index = labeled_options.index(selected)
+                st.session_state.user_answers[i] = selected_index
+
+        if st.button("Submit Quiz"):
+            st.session_state.quiz_submitted = True
+
+    # After submit, reveal answers and score
+    if "quiz_data" in st.session_state and st.session_state.get("quiz_submitted", False):
+        correct = 0
+        wrong = 0
+        weak_topics = []
+        st.subheader("Quiz Results")
+        for i, q in enumerate(st.session_state.quiz_data):
+            user_ans = st.session_state.user_answers.get(i, -1)
+            corr_idx = q['correct']
+            is_correct = user_ans == corr_idx
+            if is_correct:
+                correct += 1
+            else:
+                wrong += 1
+                weak_topics.append(topic)
+
             st.markdown(f"**Q{i+1}: {q['question']}**")
-            ans = st.text_input(f"Your answer for Q{i+1}:", key=f"ans{i}")
-            st.session_state.user_answers[i] = ans
+            st.write(f"Your answer: {'ABCDE'[user_ans] if user_ans != -1 else 'None'}")
+            st.write(f"Correct answer: {'ABCD'[corr_idx]}. {q['options'][corr_idx]}")
+            st.write("✅ Correct" if is_correct else "❌ Wrong")
+            st.divider()
 
-        if st.button("Submit Quiz Answers"):
-            # Evaluate answers using Gemini API
-            correct = 0
-            weak_topics = []
-            for i, q in enumerate(st.session_state.quiz_data):
-                user_ans = st.session_state.user_answers.get(i, "")
-                check_prompt = f"Is the following answer correct for the question?\nQuestion: {q['question']}\nOptions: {q['options']}\nAnswer: {user_ans}\nRespond with 'correct' or 'wrong' and specify topic if wrong."
-                result = gemini_api(check_prompt).lower()
-                if "correct" in result:
-                    correct += 1
-                else:
-                    weak_topics.append(q.get("topic","General"))
+        st.success(f"✅ Correct: {correct}, ❌ Wrong: {wrong}")
+        if weak_topics:
+            st.info(f"Focus on improving: {', '.join(set(weak_topics))}")
+            tips = gemini_api(f"Provide improvement tips for: {', '.join(set(weak_topics))}")
+            st.write(tips)
 
-            wrong = len(st.session_state.quiz_data) - correct
-            st.success(f"✅ Correct: {correct}, ❌ Wrong: {wrong}")
-            if weak_topics:
-                st.info(f"Focus on improving: {', '.join(set(weak_topics))}")
-                tips = gemini_api(f"Provide improvement tips for: {', '.join(set(weak_topics))}")
-                st.write(tips)
+        # Save progress
+        score = int((correct / len(st.session_state.quiz_data)) * 100) if st.session_state.quiz_data else 0
+        progress["history"].append({"date": str(date.today()), "score": score})
+        progress["summary"]["correct"] += correct
+        progress["summary"]["wrong"] += wrong
+        assign_badges(progress, score)
+        save_progress(username, progress)
+        display_badges(progress)
+        # Clear quiz data
+        del st.session_state.quiz_data
+        del st.session_state.user_answers
+        del st.session_state.quiz_submitted
 
-            # Save progress
-            score = int((correct / len(st.session_state.quiz_data)) * 100)
-            progress["history"].append({"date": str(date.today()), "score": score})
-            progress["summary"]["correct"] += correct
-            progress["summary"]["wrong"] += wrong
-            assign_badges(progress, score)
-            save_progress(username, progress)
-            display_badges(progress)
+    # ---------- Flashcards ----------
+    st.subheader("📚 Flashcards")
+    flashcard_topic = st.text_input("Enter topic for flashcards:")
+    num_cards = st.slider("Number of flashcards", 1, 10, 5)
+    if st.button("Generate Flashcards"):
+        if flashcard_topic:
+            flashcard_prompt = f"Generate {num_cards} flashcards on '{flashcard_topic}' in JSON format as a list of objects, each with 'front' (string) and 'back' (string)"
+            flashcard_text = gemini_api(flashcard_prompt)
+            try:
+                flashcards = json.loads(flashcard_text)
+                st.session_state.flashcards = flashcards
+                progress["flashcards"].append({
+                    "topic": flashcard_topic,
+                    "cards": flashcards,
+                    "timestamp": str(date.today())
+                })
+                progress["chat_history"].append({
+                    "type": "Flashcards",
+                    "content": flashcard_topic,
+                    "num_cards": num_cards,
+                    "timestamp": str(date.today())
+                })
+                save_progress(username, progress)
+                st.success(f"Generated {len(flashcards)} flashcards!")
+            except:
+                st.error("Failed to generate flashcards. Try another topic.")
+        else:
+            st.warning("Enter a topic!")
+
+    # Display and practice flashcards
+    if "flashcards" in st.session_state:
+        st.subheader("Practice Flashcards")
+        for i, card in enumerate(st.session_state.flashcards):
+            with st.container():
+                if f"flip_{i}" not in st.session_state:
+                    st.session_state[f"flip_{i}"] = False
+                if st.button(f"Card {i+1}: Show {'Back' if st.session_state[f'flip_{i}'] else 'Front'}", key=f"flip_btn_{i}"):
+                    st.session_state[f"flip_{i}"] = not st.session_state[f"flip_{i}"]
+                st.markdown(
+                    f"<div class='flip-card {'flip-card-back' if st.session_state[f'flip_{i}'] else 'flip-card-front'}'>"
+                    f"{card['back' if st.session_state[f'flip_{i}'] else 'front']}"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+        if st.button("Clear Flashcards"):
+            del st.session_state.flashcards
+            st.success("Flashcards cleared!")
