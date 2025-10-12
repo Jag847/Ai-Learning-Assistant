@@ -7,7 +7,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import date
 
-API_KEY = "YOUR_API_KEY"
+API_KEY =AIzaSyAjwX-7ymrT5RBObzDkd2nhCFflfXEA2ts 
 MODEL = "gemini-2.0-flash"
 URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={API_KEY}"
 
