@@ -2,7 +2,7 @@ import streamlit as st
 import os
 import json
 from ai_modules import (
-    run_ai_study_buddy, run_voice_to_notes, show_dashboard, load_progress, save_progress
+    run_ai_study_buddy, show_dashboard, load_progress, save_progress
 )
 
 st.set_page_config(page_title="AI Learning Assistant", page_icon="🤖", layout="wide")
@@ -61,7 +61,6 @@ if st.session_state.get("logged_in", False):
     st.sidebar.title(f"🌿 {st.session_state['username']}'s Dashboard")
     page = st.sidebar.radio("Go to", [
         "AI Study Buddy",
-        "Voice to Notes",
         "Progress Dashboard",
         "Settings / Logout"
     ])
@@ -90,8 +89,7 @@ if st.session_state.get("logged_in", False):
             elif entry["type"] == "Flashcards":
                 st.markdown(f"**Flashcards Generated for Topic:** {entry['content']}")
                 st.markdown(f"**Number of Cards:** {entry['num_cards']}")
-    elif page == "Voice to Notes":
-        run_voice_to_notes(st.session_state["username"])
+    
     elif page == "Progress Dashboard":
         show_dashboard(st.session_state["username"])
     elif page == "Settings / Logout":
