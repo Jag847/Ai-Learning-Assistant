@@ -1,6 +1,11 @@
 import streamlit as st
 import os
-import json
+try:
+    import json
+except ImportError as e:
+    st.error(f"Failed to import json: {e}")
+    raise
+
 from ai_modules import (
     run_ai_study_buddy, show_dashboard, load_progress, save_progress
 )
@@ -89,7 +94,6 @@ if st.session_state.get("logged_in", False):
             elif entry["type"] == "Flashcards":
                 st.markdown(f"**Flashcards Generated for Topic:** {entry['content']}")
                 st.markdown(f"**Number of Cards:** {entry['num_cards']}")
-    
     elif page == "Progress Dashboard":
         show_dashboard(st.session_state["username"])
     elif page == "Settings / Logout":
