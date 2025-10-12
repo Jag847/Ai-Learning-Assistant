@@ -1,13 +1,12 @@
-import streamlit as st
+ import streamlit as st
 import requests
 import json
 import os
-import tempfile
 import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import date
 
-API_KEY =AIzaSyAjwX-7ymrT5RBObzDkd2nhCFflfXEA2ts 
+API_KEY =AIzaSyAjwX-7ymrT5RBObzDkd2nhCFflfXEA2ts  
 MODEL = "gemini-2.0-flash"
 URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={API_KEY}"
 
@@ -31,8 +30,18 @@ def gemini_api(prompt: str):
 def load_progress(username):
     file = get_progress_file(username)
     if os.path.exists(file):
-        with open(file, "r") as f:
-            return json.load(f)
+        try:
+            with open(file, "r") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            st.error("Corrupted progress file. Resetting progress.")
+            return {
+                "history": [],
+                "summary": {"correct": 0, "wrong": 0},
+                "badges": [],
+                "chat_history": [],
+                "flashcards": []
+            }
     return {
         "history": [],
         "summary": {"correct": 0, "wrong": 0},
@@ -43,8 +52,11 @@ def load_progress(username):
 
 def save_progress(username, progress):
     file = get_progress_file(username)
-    with open(file, "w") as f:
-        json.dump(progress, f, indent=4)
+    try:
+        with open(file, "w") as f:
+            json.dump(progress, f, indent=4)
+    except Exception as e:
+        st.error(f"Failed to save progress: {e}")
 
 # -------------------- BADGES --------------------
 def assign_badges(progress, score):
@@ -67,6 +79,29 @@ def display_badges(progress):
     else:
         st.info("No badges earned yet.")
 
+# -------------------- PROGRESS DASHBOARD --------------------
+def show_dashboard(username):
+    st.header("📊 Progress Dashboard")
+    progress = load_progress(username)
+    st.subheader("Quiz Performance")
+    if progress["history"]:
+        df = pd.DataFrame(progress["history"])
+        st.line_chart(df.set_index("date")["score"])
+        st.write(f"Average Score: {df['score'].mean():.2f}%")
+    else:
+        st.info("No quiz history yet.")
+    
+    st.subheader("Flashcard Usage")
+    if progress["flashcards"]:
+        st.write(f"Total Flashcard Sets: {len(progress['flashcards'])}")
+        topics = [fc["topic"] for fc in progress["flashcards"]]
+        st.write(f"Topics Covered: {', '.join(set(topics))}")
+    else:
+        st.info("No flashcards generated yet.")
+    
+    st.subheader("Badges Earned")
+    display_badges(progress)
+
 # -------------------- AI STUDY BUDDY --------------------
 def run_ai_study_buddy(username):
     progress = load_progress(username)
@@ -79,7 +114,6 @@ def run_ai_study_buddy(username):
         if question:
             answer = gemini_api(f"Answer this academic question clearly in simple terms: {question}")
             st.success(answer)
-            # Save to chat history
             progress["chat_history"].append({
                 "type": "Question",
                 "content": question,
@@ -103,7 +137,6 @@ def run_ai_study_buddy(username):
         except:
             st.error("Failed to generate quiz. Try another topic.")
 
-    # Display quiz questions with radio buttons
     if "quiz_data" in st.session_state and not st.session_state.get("quiz_submitted", False):
         st.subheader("📝 Answer the Quiz")
         for i, q in enumerate(st.session_state.quiz_data):
@@ -111,7 +144,6 @@ def run_ai_study_buddy(username):
             labels = ['A', 'B', 'C', 'D']
             labeled_options = [f"{labels[j]}. {options[j]}" for j in range(4)]
             selected = st.radio(f"Q{i+1}: {q['question']}", labeled_options, key=f"radio_{i}")
-            # Store the index of selected option
             if selected:
                 selected_index = labeled_options.index(selected)
                 st.session_state.user_answers[i] = selected_index
@@ -119,7 +151,6 @@ def run_ai_study_buddy(username):
         if st.button("Submit Quiz"):
             st.session_state.quiz_submitted = True
 
-    # After submit, reveal answers and score
     if "quiz_data" in st.session_state and st.session_state.get("quiz_submitted", False):
         correct = 0
         wrong = 0
@@ -147,7 +178,6 @@ def run_ai_study_buddy(username):
             tips = gemini_api(f"Provide improvement tips for: {', '.join(set(weak_topics))}")
             st.write(tips)
 
-        # Save progress
         score = int((correct / len(st.session_state.quiz_data)) * 100) if st.session_state.quiz_data else 0
         progress["history"].append({"date": str(date.today()), "score": score})
         progress["summary"]["correct"] += correct
@@ -155,7 +185,6 @@ def run_ai_study_buddy(username):
         assign_badges(progress, score)
         save_progress(username, progress)
         display_badges(progress)
-        # Clear quiz data
         del st.session_state.quiz_data
         del st.session_state.user_answers
         del st.session_state.quiz_submitted
@@ -189,7 +218,6 @@ def run_ai_study_buddy(username):
         else:
             st.warning("Enter a topic!")
 
-    # Display and practice flashcards
     if "flashcards" in st.session_state:
         st.subheader("Practice Flashcards")
         for i, card in enumerate(st.session_state.flashcards):
