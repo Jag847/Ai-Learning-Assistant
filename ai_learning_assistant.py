@@ -1,4 +1,3 @@
-# ai_learning_assistant.py
 import streamlit as st
 import os
 try:
