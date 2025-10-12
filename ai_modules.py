@@ -8,7 +8,7 @@ from datetime import date
 import base64
 import PyPDF2
 
-API_KEY ="AIzaSyAjwX-7ymrT5RBObzDkd2nhCFflfXEA2ts" 
+API_KEY ="AIzaSyAjwX-7ymrT5RBObzDkd2nhCFflfXEA2ts"
 MODEL = "gemini-2.0-flash"
 URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={API_KEY}"
 
@@ -87,14 +87,8 @@ def save_progress(username, progress):
         st.error(f"Failed to save progress: {e}")
 
 # -------------------- BADGES --------------------
-def assign_badges(progress, score):
+def assign_badges(progress):
     badges = progress.get("badges", [])
-    if score >= 80 and "🌟 High Scorer" not in badges:
-        badges.append("🌟 High Scorer")
-    if len(progress.get("history", [])) >= 5 and "🔥 Consistent Learner" not in badges:
-        badges.append("🔥 Consistent Learner")
-    if len(progress.get("history", [])) == 1 and "🎯 First Quiz Completed" not in badges:
-        badges.append("🎯 First Quiz Completed")
     if len(progress.get("flashcards", [])) >= 3 and "📚 Flashcard Master" not in badges:
         badges.append("📚 Flashcard Master")
     progress["badges"] = badges
@@ -111,13 +105,6 @@ def display_badges(progress):
 def show_dashboard(username):
     st.header("📊 Progress Dashboard")
     progress = load_progress(username)
-    st.subheader("Quiz Performance")
-    if progress["history"]:
-        df = pd.DataFrame(progress["history"])
-        st.line_chart(df.set_index("date")["score"])
-        st.write(f"Average Score: {df['score'].mean():.2f}%")
-    else:
-        st.info("No quiz history yet.")
     
     st.subheader("Flashcard Usage")
     if progress["flashcards"]:
@@ -169,72 +156,29 @@ def run_ai_study_buddy(username):
         else:
             quiz_text = gemini_api(f"Generate {num_questions} multiple-choice questions on '{content}' in JSON format as a list of objects, each with 'question' (string), 'options' (list of 4 strings), 'correct' (integer index 0-3 for the correct option)")
             try:
-                st.session_state.quiz_data = json.loads(quiz_text)
-                st.success(f"Quiz generated with {num_questions} questions! Enter your answers below (e.g., A, B, C, D).")
-                st.session_state.user_answers = {}
-                st.session_state.quiz_submitted = False
+                quiz_data = json.loads(quiz_text)
+                st.session_state.quiz_data = quiz_data
+                st.success(f"Quiz generated with {num_questions} questions!")
             except:
                 st.error("Failed to generate quiz. Try another topic or file.")
 
-    if "quiz_data" in st.session_state and not st.session_state.get("quiz_submitted", False):
-        st.subheader("📝 Answer the Quiz")
+    if "quiz_data" in st.session_state:
+        st.subheader("📝 Quiz Questions")
         for i, q in enumerate(st.session_state.quiz_data):
             st.markdown(f"**Q{i+1}: {q['question']}**")
             for j, opt in enumerate(q['options']):
                 st.write(f"{'ABCD'[j]}. {opt}")
-            ans = st.text_input(f"Your answer for Q{i+1} (A/B/C/D):", key=f"ans_{i}")
-            st.session_state.user_answers[i] = ans.upper()
+            st.divider()
 
-        if st.button("Submit Quiz"):
-            st.session_state.quiz_submitted = True
-
-    if "quiz_data" in st.session_state and st.session_state.get("quiz_submitted", False):
-        correct = 0
-        wrong = 0
-        weak_topics = []
-        results = []
-        option_map = {'A': 0, 'B': 1, 'C': 2, 'D': 3}
-        for i, q in enumerate(st.session_state.quiz_data):
-            user_ans_str = st.session_state.user_answers.get(i, "")
-            user_ans = option_map.get(user_ans_str, -1)
-            corr_idx = q['correct']
-            is_correct = user_ans == corr_idx
-            if is_correct:
-                correct += 1
-            else:
-                wrong += 1
-                weak_topics.append(topic or "Uploaded content")
-            results.append({
-                "question": q['question'],
-                "user_answer": user_ans_str or "None",
-                "correct_answer": f"{'ABCD'[corr_idx]}. {q['options'][corr_idx]}",
-                "status": "✅ Correct" if is_correct else "❌ Wrong"
-            })
-
-        st.success(f"✅ Correct: {correct}, ❌ Wrong: {wrong}")
-        if weak_topics:
-            st.info(f"Focus on improving: {', '.join(set(weak_topics))}")
-            tips = gemini_api(f"Provide improvement tips for: {', '.join(set(weak_topics))}")
-            st.write(tips)
-
-        with st.expander("Detailed Quiz Results"):
-            for res in results:
-                st.markdown(f"**Question:** {res['question']}")
-                st.write(f"Your Answer: {res['user_answer']}")
-                st.write(f"Correct Answer: {res['correct_answer']}")
-                st.write(res['status'])
+        with st.expander("Quiz Answers"):
+            for i, q in enumerate(st.session_state.quiz_data):
+                st.markdown(f"**Q{i+1}: {q['question']}**")
+                st.write(f"Correct Answer: {'ABCD'[q['correct']]}. {q['options'][q['correct']]}")
                 st.divider()
 
-        score = int((correct / len(st.session_state.quiz_data)) * 100) if st.session_state.quiz_data else 0
-        progress["history"].append({"date": str(date.today()), "score": score})
-        progress["summary"]["correct"] += correct
-        progress["summary"]["wrong"] += wrong
-        assign_badges(progress, score)
-        save_progress(username, progress)
-        display_badges(progress)
-        del st.session_state.quiz_data
-        del st.session_state.user_answers
-        del st.session_state.quiz_submitted
+        if st.button("Clear Quiz"):
+            del st.session_state.quiz_data
+            st.success("Quiz cleared!")
 
     # ---------- Flashcards ----------
     st.subheader("📚 Flashcards")
@@ -258,6 +202,7 @@ def run_ai_study_buddy(username):
                     "num_cards": num_cards,
                     "timestamp": str(date.today())
                 })
+                assign_badges(progress)
                 save_progress(username, progress)
                 st.success(f"Generated {len(flashcards)} flashcards!")
             except:
