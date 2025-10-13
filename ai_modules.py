@@ -2,12 +2,10 @@ import streamlit as st
 import requests
 import json
 import os
-import pandas as pd
-import matplotlib.pyplot as plt
-from datetime import date
+import re
 import base64
 import PyPDF2
-import re
+from datetime import date
 
 API_KEY = "AIzaSyAjwX-7ymrT5RBObzDkd2nhCFflfXEA2ts"
 MODEL = "gemini-2.0-flash"
@@ -69,7 +67,8 @@ def load_progress(username):
         "summary": {"correct": 0, "wrong": 0},
         "badges": [],
         "chat_history": [],
-        "flashcards": []
+        "flashcards": [],
+        "quizzes": []
     }
 
 def save_progress(username, progress):
@@ -81,6 +80,8 @@ def assign_badges(progress):
     badges = progress.get("badges", [])
     if len(progress.get("flashcards", [])) >= 3 and "📚 Flashcard Master" not in badges:
         badges.append("📚 Flashcard Master")
+    if len(progress.get("quizzes", [])) >= 3 and "🧩 Quiz Challenger" not in badges:
+        badges.append("🧩 Quiz Challenger")
     progress["badges"] = badges
 
 def display_badges(progress):
@@ -104,10 +105,18 @@ def show_dashboard(username):
     else:
         st.info("No flashcards generated yet.")
 
+    st.subheader("Quiz History")
+    if progress.get("quizzes"):
+        st.write(f"Total Quizzes: {len(progress['quizzes'])}")
+        topics = [q["topic"] for q in progress["quizzes"]]
+        st.write(f"Topics Covered: {', '.join(set(topics))}")
+    else:
+        st.info("No quizzes generated yet.")
+
     st.subheader("Badges Earned")
     display_badges(progress)
 
-# -------------------- CLEAN QUIZ TEXT --------------------
+# -------------------- CLEAN JSON HELPERS --------------------
 def extract_json_from_text(text):
     """Extract JSON block safely from raw LLM output."""
     json_match = re.search(r"\[.*\]", text, re.DOTALL)
@@ -158,11 +167,28 @@ def run_ai_study_buddy(username):
         else:
             quiz_prompt = (
                 f"Generate {num_questions} multiple-choice questions on '{content}'. "
-                "Each question should have 4 options labeled A, B, C, D, and show the correct answer clearly at the end."
+                "Each question should have 4 options labeled A, B, C, D, and then list the correct answers clearly at the end."
             )
             quiz_text = gemini_api(quiz_prompt)
             st.session_state.quiz_text = quiz_text
-            st.success(f"Generated {num_questions} quiz questions!")
+
+            # Save quiz to progress
+            progress["quizzes"].append({
+                "topic": topic or "Untitled",
+                "num_questions": num_questions,
+                "content": quiz_text,
+                "timestamp": str(date.today())
+            })
+            progress["chat_history"].append({
+                "type": "Quiz",
+                "content": topic or "Untitled",
+                "num_questions": num_questions,
+                "timestamp": str(date.today())
+            })
+            assign_badges(progress)
+            save_progress(username, progress)
+
+            st.success(f"Generated {num_questions} quiz questions on '{topic}'!")
 
     if "quiz_text" in st.session_state:
         st.subheader("📝 Quiz Questions")
@@ -204,6 +230,12 @@ def run_ai_study_buddy(username):
                 progress["flashcards"].append({
                     "topic": flashcard_topic,
                     "cards": flashcards,
+                    "timestamp": str(date.today())
+                })
+                progress["chat_history"].append({
+                    "type": "Flashcards",
+                    "content": flashcard_topic,
+                    "num_cards": num_cards,
                     "timestamp": str(date.today())
                 })
                 assign_badges(progress)
