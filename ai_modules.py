@@ -2,10 +2,11 @@ import streamlit as st
 import requests
 import json
 import os
-import re
+import pandas as pd
+import matplotlib.pyplot as plt
+from datetime import date
 import base64
 import PyPDF2
-from datetime import date
 
 API_KEY = "AIzaSyAjwX-7ymrT5RBObzDkd2nhCFflfXEA2ts"
 MODEL = "gemini-2.0-flash"
@@ -15,23 +16,25 @@ URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generate
 def get_progress_file(username):
     return f"{username}_progress.json"
 
-# -------------------- FILE HANDLING --------------------
+# -------------------- PROCESS UPLOADED FILE --------------------
 def process_file(uploaded_file):
     if uploaded_file is None:
         return None
     if uploaded_file.type == "application/pdf":
         try:
             pdf_reader = PyPDF2.PdfReader(uploaded_file)
-            text = "".join([page.extract_text() + "\n" for page in pdf_reader.pages])
+            text = ""
+            for page in pdf_reader.pages:
+                text += page.extract_text() + "\n"
             return {"text": text.strip()}
-        except Exception as e:
-            st.error(f"Failed to read PDF: {e}")
+        except:
             return None
     elif uploaded_file.type.startswith("image/"):
         data = base64.b64encode(uploaded_file.read()).decode("utf-8")
         mime = uploaded_file.type
         return {"inline_data": {"mime_type": mime, "data": data}}
-    return None
+    else:
+        return None
 
 # -------------------- GEMINI API --------------------
 def gemini_api(prompt: str, file_data=None):
@@ -41,10 +44,8 @@ def gemini_api(prompt: str, file_data=None):
             parts[0]["text"] += "\n\nDocument content:\n" + file_data["text"]
         elif "inline_data" in file_data:
             parts.append(file_data["inline_data"])
-
     data = {"contents": [{"parts": parts}]}
     headers = {"Content-Type": "application/json"}
-
     try:
         response = requests.post(URL, headers=headers, json=data)
         response.raise_for_status()
@@ -59,7 +60,15 @@ def load_progress(username):
     if os.path.exists(file):
         try:
             with open(file, "r") as f:
-                return json.load(f)
+                progress = json.load(f)
+                # Ensure backward compatibility
+                progress.setdefault("quizzes", [])
+                progress.setdefault("flashcards", [])
+                progress.setdefault("chat_history", [])
+                progress.setdefault("badges", [])
+                progress.setdefault("history", [])
+                progress.setdefault("summary", {"correct": 0, "wrong": 0})
+                return progress
         except json.JSONDecodeError:
             st.error("Corrupted progress file. Resetting progress.")
             return {
@@ -68,7 +77,7 @@ def load_progress(username):
                 "badges": [],
                 "chat_history": [],
                 "flashcards": [],
-                "quizzes": []     
+                "quizzes": []  # ✅ Added to prevent KeyError
             }
     return {
         "history": [],
@@ -76,12 +85,16 @@ def load_progress(username):
         "badges": [],
         "chat_history": [],
         "flashcards": [],
-        "quizzes": []         
+        "quizzes": []  # ✅ Added here too
     }
 
 def save_progress(username, progress):
-    with open(get_progress_file(username), "w") as f:
-        json.dump(progress, f, indent=4)
+    file = get_progress_file(username)
+    try:
+        with open(file, "w") as f:
+            json.dump(progress, f, indent=4)
+    except Exception as e:
+        st.error(f"Failed to save progress: {e}")
 
 # -------------------- BADGES --------------------
 def assign_badges(progress):
@@ -104,7 +117,7 @@ def display_badges(progress):
 def show_dashboard(username):
     st.header("📊 Progress Dashboard")
     progress = load_progress(username)
-
+    
     st.subheader("Flashcard Usage")
     if progress["flashcards"]:
         st.write(f"Total Flashcard Sets: {len(progress['flashcards'])}")
@@ -112,43 +125,31 @@ def show_dashboard(username):
         st.write(f"Topics Covered: {', '.join(set(topics))}")
     else:
         st.info("No flashcards generated yet.")
-
-    st.subheader("Quiz History")
-    if progress.get("quizzes"):
-        st.write(f"Total Quizzes: {len(progress['quizzes'])}")
+    
+    st.subheader("Quiz Usage")
+    if progress["quizzes"]:
+        st.write(f"Total Quizzes Taken: {len(progress['quizzes'])}")
         topics = [q["topic"] for q in progress["quizzes"]]
-        st.write(f"Topics Covered: {', '.join(set(topics))}")
+        st.write(f"Quiz Topics: {', '.join(set(topics))}")
     else:
         st.info("No quizzes generated yet.")
-
+    
     st.subheader("Badges Earned")
     display_badges(progress)
-
-# -------------------- CLEAN JSON HELPERS --------------------
-def extract_json_from_text(text):
-    """Extract JSON block safely from raw LLM output."""
-    json_match = re.search(r"\[.*\]", text, re.DOTALL)
-    if json_match:
-        try:
-            return json.loads(json_match.group(0))
-        except:
-            return None
-    return None
 
 # -------------------- AI STUDY BUDDY --------------------
 def run_ai_study_buddy(username):
     progress = load_progress(username)
     st.header("🧠 AI Study Buddy")
-
+    
     # ---------- Q&A ----------
     st.subheader("❓ Ask a Question")
-    uploaded_file_qa = st.file_uploader("Upload PDF/Image (optional)", type=["pdf", "png", "jpg", "jpeg"], key="qa_upload")
-    question = st.text_input("Enter your academic question:")
+    uploaded_file_qa = st.file_uploader("Upload PDF or Image for context (optional)", type=["pdf", "png", "jpg", "jpeg"], key="qa_upload")
+    question = st.text_input("Ask a question or topic:")
     if st.button("Get Answer"):
-        if not question:
-            st.warning("Enter a question!")
-        else:
-            answer = gemini_api(f"Answer clearly and simply: {question}", process_file(uploaded_file_qa))
+        if question:
+            file_data = process_file(uploaded_file_qa)
+            answer = gemini_api(f"Answer this academic question clearly in simple terms: {question}", file_data)
             st.success(answer)
             progress["chat_history"].append({
                 "type": "Question",
@@ -157,83 +158,68 @@ def run_ai_study_buddy(username):
                 "timestamp": str(date.today())
             })
             save_progress(username, progress)
+        else:
+            st.warning("Enter a question!")
 
-    # ---------- QUIZ ----------
+    # ---------- Quiz ----------
     st.subheader("🎯 Quiz Time")
-    uploaded_file_quiz = st.file_uploader("Upload PDF/Image for quiz (optional)", type=["pdf", "png", "jpg", "jpeg"], key="quiz_upload")
-    topic = st.text_input("Enter quiz topic:")
+    uploaded_file_quiz = st.file_uploader("Upload PDF or Image to generate quiz from (optional)", type=["pdf", "png", "jpg", "jpeg"], key="quiz_upload")
+    topic = st.text_input("Enter quiz topic (or leave blank if using uploaded file):")
     num_questions = st.slider("Number of questions", 5, 20, 10)
-
     if st.button("Generate Quiz"):
-        content = topic.strip()
+        content = topic
         file_data = process_file(uploaded_file_quiz)
         if file_data:
-            content = gemini_api("Summarize content for quiz generation:", file_data)
-
+            content = gemini_api("Summarize the key content from this document for quiz generation.", file_data)
         if not content:
-            st.warning("Provide a topic or file.")
+            st.warning("Provide a topic or upload a file.")
         else:
-            quiz_prompt = (
-                f"Generate {num_questions} multiple-choice questions on '{content}'. "
-                "Each question should have 4 options labeled A, B, C, D, and then list the correct answers clearly at the end."
+            quiz_text = gemini_api(
+                f"Generate {num_questions} multiple-choice questions on '{content}' "
+                f"in JSON format as a list of objects, each with 'question', 'options' (4), and 'correct' (0-3)."
             )
-            quiz_text = gemini_api(quiz_prompt)
-            st.session_state.quiz_text = quiz_text
+            try:
+                quiz_data = json.loads(quiz_text)
+                st.session_state.quiz_data = quiz_data
+                progress["quizzes"].append({
+                    "topic": topic or "Uploaded Document",
+                    "questions": quiz_data,
+                    "timestamp": str(date.today())
+                })
+                assign_badges(progress)
+                save_progress(username, progress)
+                st.success(f"Quiz generated with {num_questions} questions!")
+            except:
+                st.error("Failed to generate quiz. Try another topic or file.")
 
-            # Save quiz to progress
-            progress["quizzes"].append({
-                "topic": topic or "Untitled",
-                "num_questions": num_questions,
-                "content": quiz_text,
-                "timestamp": str(date.today())
-            })
-            progress["chat_history"].append({
-                "type": "Quiz",
-                "content": topic or "Untitled",
-                "num_questions": num_questions,
-                "timestamp": str(date.today())
-            })
-            assign_badges(progress)
-            save_progress(username, progress)
-
-            st.success(f"Generated {num_questions} quiz questions on '{topic}'!")
-
-    if "quiz_text" in st.session_state:
+    if "quiz_data" in st.session_state:
         st.subheader("📝 Quiz Questions")
-        text = st.session_state.quiz_text
-        # Split questions and answers
-        parts = re.split(r"(?:Answers|Correct Answers)[:\-]", text, flags=re.IGNORECASE)
-        questions_part = parts[0].strip() if parts else text
-        answers_part = parts[1].strip() if len(parts) > 1 else None
+        for i, q in enumerate(st.session_state.quiz_data):
+            st.markdown(f"**Q{i+1}: {q['question']}**")
+            for j, opt in enumerate(q['options']):
+                st.write(f"{'ABCD'[j]}. {opt}")
+            st.divider()
 
-        st.markdown("### Questions:")
-        st.text_area("Quiz Content", value=questions_part, height=400)
-
-        if answers_part:
-            with st.expander("View Answers"):
-                st.text_area("Answers", value=answers_part, height=300)
+        with st.expander("Quiz Answers"):
+            for i, q in enumerate(st.session_state.quiz_data):
+                st.markdown(f"**Q{i+1}: {q['question']}**")
+                st.write(f"✅ Correct: {'ABCD'[q['correct']]}. {q['options'][q['correct']]}")
+                st.divider()
 
         if st.button("Clear Quiz"):
-            del st.session_state.quiz_text
+            del st.session_state.quiz_data
             st.success("Quiz cleared!")
 
-    # ---------- FLASHCARDS ----------
+    # ---------- Flashcards ----------
     st.subheader("📚 Flashcards")
     flashcard_topic = st.text_input("Enter topic for flashcards:")
     num_cards = st.slider("Number of flashcards", 1, 10, 5)
-
     if st.button("Generate Flashcards"):
-        if not flashcard_topic:
-            st.warning("Enter a topic!")
-        else:
-            flashcard_prompt = (
-                f"Generate {num_cards} flashcards for topic '{flashcard_topic}'. "
-                "Each should have a 'Front:' and 'Back:' clearly labeled."
-            )
-            flash_text = gemini_api(flashcard_prompt)
-            cards = re.findall(r"Front:(.*?)Back:(.*?)(?=Front:|$)", flash_text, re.DOTALL)
-            if cards:
-                flashcards = [{"front": f.strip(), "back": b.strip()} for f, b in cards]
+        if flashcard_topic:
+            flashcard_prompt = f"Generate {num_cards} flashcards on '{flashcard_topic}' in JSON format as a list of objects with 'front' and 'back'."
+            flashcard_text = gemini_api(flashcard_prompt)
+            try:
+                flashcards = json.loads(flashcard_text)
                 st.session_state.flashcards = flashcards
                 progress["flashcards"].append({
                     "topic": flashcard_topic,
@@ -249,18 +235,25 @@ def run_ai_study_buddy(username):
                 assign_badges(progress)
                 save_progress(username, progress)
                 st.success(f"Generated {len(flashcards)} flashcards!")
-            else:
-                st.error("Failed to parse flashcards. Try again.")
+            except:
+                st.error("Failed to generate flashcards. Try another topic.")
+        else:
+            st.warning("Enter a topic!")
 
     if "flashcards" in st.session_state:
         st.subheader("Practice Flashcards")
         for i, card in enumerate(st.session_state.flashcards):
-            if f"flip_{i}" not in st.session_state:
-                st.session_state[f"flip_{i}"] = False
-            if st.button(f"Card {i+1}: Show {'Back' if not st.session_state[f'flip_{i}'] else 'Front'}", key=f"flip_{i}_btn"):
-                st.session_state[f"flip_{i}"] = not st.session_state[f"flip_{i}"]
-            st.info(card["back"] if st.session_state[f"flip_{i}"] else card["front"])
-
+            with st.container():
+                if f"flip_{i}" not in st.session_state:
+                    st.session_state[f"flip_{i}"] = False
+                if st.button(f"Card {i+1}: Show {'Back' if st.session_state[f'flip_{i}'] else 'Front'}", key=f"flip_btn_{i}"):
+                    st.session_state[f"flip_{i}"] = not st.session_state[f"flip_{i}"]
+                st.markdown(
+                    f"<div class='flip-card {'flip-card-back' if st.session_state[f'flip_{i}'] else 'flip-card-front'}'>"
+                    f"{card['back' if st.session_state[f'flip_{i}'] else 'front']}"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
         if st.button("Clear Flashcards"):
             del st.session_state.flashcards
             st.success("Flashcards cleared!")
