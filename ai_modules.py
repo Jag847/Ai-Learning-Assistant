@@ -61,14 +61,22 @@ def load_progress(username):
             with open(file, "r") as f:
                 return json.load(f)
         except json.JSONDecodeError:
-            st.warning("Resetting corrupted progress file.")
+            st.error("Corrupted progress file. Resetting progress.")
+            return {
+                "history": [],
+                "summary": {"correct": 0, "wrong": 0},
+                "badges": [],
+                "chat_history": [],
+                "flashcards": [],
+                "quizzes": []     
+            }
     return {
         "history": [],
         "summary": {"correct": 0, "wrong": 0},
         "badges": [],
         "chat_history": [],
         "flashcards": [],
-        "quizzes": []
+        "quizzes": []         
     }
 
 def save_progress(username, progress):
