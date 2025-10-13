@@ -59,42 +59,10 @@ if st.session_state.get("logged_in", False):
         "Settings / Logout"
     ])
 
-    # -------------------- HISTORY BAR --------------------
-    progress = load_progress(st.session_state["username"])
-    history = progress.get("chat_history", [])
-    with st.sidebar.expander("📜 History", expanded=False):
-        if history:
-            for idx, entry in enumerate(reversed(history)):
-                label = f"{entry['type']}: {entry['content'][:30]}"
-                if st.button(label, key=f"hist_{idx}"):
-                    st.session_state["selected_history"] = entry
-        else:
-            st.info("No history yet.")
-
-    # -------------------- PAGE HANDLERS --------------------
     if page == "AI Study Buddy":
         run_ai_study_buddy(st.session_state["username"])
-
-        # Display selected history if any
-        if "selected_history" in st.session_state:
-            st.subheader("🧾 History Entry Details")
-            entry = st.session_state["selected_history"]
-            if entry["type"] == "Question":
-                st.markdown(f"**Question:** {entry['content']}")
-                st.markdown(f"**Answer:** {entry.get('answer', 'N/A')}")
-            elif entry["type"] == "Flashcards":
-                st.markdown(f"**Flashcards Topic:** {entry['content']}")
-                st.markdown(f"**Number of Cards:** {entry['num_cards']}")
-            elif entry["type"] == "Quiz":
-                st.markdown(f"**Quiz Topic:** {entry['content']}")
-                st.markdown(f"**Questions:** {entry['num_questions']}")
-                for quiz in progress.get("quizzes", []):
-                    if quiz["topic"] == entry["content"]:
-                        st.text_area("Quiz Content", value=quiz["content"], height=400)
-
     elif page == "Progress Dashboard":
         show_dashboard(st.session_state["username"])
-
     elif page == "Settings / Logout":
         st.header("⚙️ Settings")
         progress_file = f"{st.session_state['username']}_progress.json"
