@@ -1,4 +1,4 @@
-import streamlit as st 
+import streamlit as st  
 import requests
 import json
 import os
@@ -51,7 +51,13 @@ def gemini_api(prompt: str, file_data=None):
         response = requests.post(URL, headers=headers, json=data)
         response.raise_for_status()
         result = response.json()
-        return result["candidates"][0]["content"]["parts"][0]["text"]
+        candidates = result.get("candidates", [])
+        if not candidates or "content" not in candidates[0]:
+            return "⚠️ No valid response from Gemini. Try again with a clearer topic."
+        text = candidates[0]["content"]["parts"][0].get("text", "")
+        if not text.strip():
+            return "⚠️ Empty response. Try rephrasing your topic or question."
+        return text
     except Exception as e:
         return f"⚠️ API Error: {e}"
 
@@ -107,17 +113,6 @@ def show_dashboard(username):
     st.subheader("Badges Earned")
     display_badges(progress)
 
-# -------------------- CLEAN QUIZ TEXT --------------------
-def extract_json_from_text(text):
-    """Extract JSON block safely from raw LLM output."""
-    json_match = re.search(r"\[.*\]", text, re.DOTALL)
-    if json_match:
-        try:
-            return json.loads(json_match.group(0))
-        except:
-            return None
-    return None
-
 # -------------------- AI STUDY BUDDY --------------------
 def run_ai_study_buddy(username):
     progress = load_progress(username)
@@ -148,26 +143,31 @@ def run_ai_study_buddy(username):
     num_questions = st.slider("Number of questions", 5, 20, 10)
 
     if st.button("Generate Quiz"):
-        content = topic.strip()
-        file_data = process_file(uploaded_file_quiz)
-        if file_data:
-            content = gemini_api("Summarize content for quiz generation:", file_data)
-
-        if not content:
-            st.warning("Provide a topic or file.")
+        if not topic.strip() and not uploaded_file_quiz:
+            st.warning("Please enter a topic or upload a study file.")
         else:
+            st.info("Generating quiz... Please wait ⏳")
+            file_data = process_file(uploaded_file_quiz)
+            content = topic.strip() or ""
+            if file_data:
+                summary = gemini_api("Summarize this document briefly:", file_data)
+                content += "\n\n" + summary
+
             quiz_prompt = (
-                f"Generate {num_questions} multiple-choice questions on '{content}'. "
-                "Each question should have 4 options labeled A, B, C, D, and show the correct answer clearly at the end."
+                f"Generate {num_questions} multiple-choice quiz questions on the topic:\n{content}\n\n"
+                "Each question should have options A, B, C, D, and clearly specify the correct answer at the end.\n"
+                "Format like:\n1. Question?\nA)...\nB)...\nC)...\nD)...\nAnswer: ..."
             )
             quiz_text = gemini_api(quiz_prompt)
-            st.session_state.quiz_text = quiz_text
-            st.success(f"Generated {num_questions} quiz questions!")
+            if "⚠️" in quiz_text or len(quiz_text) < 30:
+                st.error("Failed to generate quiz. Try another topic or upload a clearer document.")
+            else:
+                st.session_state.quiz_text = quiz_text
+                st.success("✅ Quiz generated successfully!")
 
     if "quiz_text" in st.session_state:
         st.subheader("📝 Quiz Questions")
         text = st.session_state.quiz_text
-        # Split questions and answers
         parts = re.split(r"(?:Answers|Correct Answers)[:\-]", text, flags=re.IGNORECASE)
         questions_part = parts[0].strip() if parts else text
         answers_part = parts[1].strip() if len(parts) > 1 else None
